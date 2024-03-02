@@ -1,0 +1,111 @@
+---
+title: "Untitled"
+format: html
+editor: source
+---
+
+We begin by installing `tidyverse`.
+
+
+```{r}
+#| eval: false
+install.packages('tidyverse')
+```
+Load the library tidyverse by calling `library()` function
+
+```{r}
+library(tidyverse)
+```
+
+`mpg` is a dataframe from `ggplot2` package that contains fuel economy data from 1999 and 2008.
+```{r}
+print(mpg)
+
+```
+```{r}
+head(mpg)
+tail(mpg)
+```
+
+## Get the meta data
+
+Dimentions of a dataframe
+Rows, Columns
+```{r}
+dim(mpg)
+```
+
+Number of rows
+```{r}
+nrow(mpg)
+```
+
+Number of columns
+```{r}
+ncol(mpg)
+```
+
+Column names
+
+```{r}
+colnames(mpg)
+```
+class of `mpg`
+
+```{r}
+class(mpg)
+```
+
+```{r}
+mpg_df = as.data.frame(mpg)
+```
+```{r}
+class(mpg_df)
+```
+
+```{r}
+print(mpg_df)
+```
+## Subsetting a dataframe
+
+```{r}
+mpg_df$year
+```
+Column Selection using `select()` from function `dplyr`
+
+```{r}
+select(.data = mpg, year)
+```
+
+```{r}
+select(mpg, starts_with('c'))
+```
+
+```{r}
+select(mpg, ends_with('y'))
+```
+
+
+```{r}
+select(mpg, contains('e'))
+```
+## Filtering rows
+
+```{r}
+slice(.data = mpg, 10:15)
+```
+
+```{r}
+filter(.data = mpg, year == 2008)
+```
+
+```{r}
+filter(.data = mpg, year == 2008, manufacturer == 'audi')
+#(year == 2008 & manufacturer == 'audi') to specify the add instead of the comma
+# | -> 'or'
+```
+
+```{r}
+dt = readr::read_csv("Data/svcckww1jskrstnz_csv.zip")
+```
+
