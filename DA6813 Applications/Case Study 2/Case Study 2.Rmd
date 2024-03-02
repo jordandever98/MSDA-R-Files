@@ -1,0 +1,1052 @@
+---
+title: "Case Study 2"
+author: "Jordan Dever"
+date: "2024-02-13"
+output: html_document
+---
+
+Loading in our libraries
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+library(car)
+library(broom)
+library(DescTools)
+library(ROCR)
+library(lmtest)
+library(dplyr)
+library(naniar)
+library(MASS)
+library(e1071)
+library(readxl)
+library(olsrr)
+```
+
+Install package 'readxl' to be able to read the excel file in to R
+```{r}
+train_data <- read_excel("~/R-Studio/DA6813 Applications/Case Study 2/BBBC-Train.xlsx")
+test_data <- read_excel("~/R-Studio/DA6813 Applications/Case Study 2/BBBC-Test.xlsx")
+```
+Looking at the structure and first few observations of the data
+
+```{r}
+str(train_data)
+
+```
+Choice: 1 = purchase, 0 = not purchased
+Gender: 0 = female, 1 = male
+Amount purchased: Total amount purchased at BBBC
+Frequency: Amount of purchases within a given time frame
+Last_Purchase = Most recent purchase in months
+First_purchase = Months since first purchase in BBBC system
+Child = purchased children books
+youth = purchased youth books
+Cook = cookbooks
+DIY = DIY Books
+Art = Art Books
+```{r}
+head(train_data)
+```
+```{r}
+train_data = train_data %>% 
+  dplyr::select(-Observation)
+```
+Removing Observation because it just notes row number which is not useful information
+Now checking for missing values
+```{r}
+anyNA(train_data)
+```
+No missing values in this data set.
+
+## Linear Regression Model
+
+```{r}
+train_lm = lm(Choice~., data = train_data)
+summary(train_lm)
+```
+This gives us a linear model on the data. This data is meaningless because our focus
+of this task is for us to find customers who have said "Yes' which is 1 in our model. 
+Our intercept in the linear regression is at 1.495 which means that when all other
+variables are 0, then all customers are going to buy the book which makes no sense.
+When we begin to add our variables to the linear regression, we begin to become
+closer to 1 with the exception of P_Art, Last_Purchase, and Amount_Purchased leading 
+to an increase to the linear model. This is just junk and we need to run a logistic
+regression because we care about the odds of a customer purchasing The Art History of Florence.
+
+-ALSO can build a diagnostic plot to show how bad it was violated.
+```{r}
+par(mfrow=c(2,2))
+plot(train_lm, which=c(1:4))
+```
+We can see that in the Residuals vs Fitted plot, that the points should be randomly distributed but are instead in a parallel line. This is likely due to our target variable, Choice,
+being a 0s and 1s only. The data is also not normally distributed by looking at
+the QQ plot. In the Scale-Location plot we can see heteroscedasticity due to how
+there is unequal variance and quadratic looking shapes. In the Cook's Distance, 
+there are potentially a few influential points. 
+
+## Logistic Regression Model
+
+Now I will change Choice and Gender into factor variables to make R able to run 
+the rest of the code. Also was done on the test data set.
+```{r}
+train_data$Choice = as.factor(train_data$Choice)
+train_data$Gender = as.factor(train_data$Gender)
+test_data$Choice = as.factor(test_data$Choice)
+test_data$Gender = as.factor(test_data$Gender)
+```
+
+```{r}
+train_glm1 = glm(Choice ~ . , data = train_data, family = binomial)
+summary(train_glm1)
+```
+Initial AIC is 1414.2, going to check for multicollinearity in the model now.
+```{r}
+vif(train_glm1)
+```
+Last_purchase gave us a VIF of 17.7. This exceeds the optimal cut offs of 5/10 
+so I will remove it and rerun the logit model.
+```{r}
+train_glm2 = glm(Choice ~ .-Last_purchase , data = train_data, family = binomial)
+summary(train_glm2)
+```
+AIC went UP to 1457 when removing Last_purchase
+Possible question: Should we always just go with the lowest AIC model?
+Checking VIF now
+```{r}
+vif(train_glm2)
+```
+First_purchase is the highest with 6.88 which gives us the option of removing
+it if we want our cut off to be at 5. I will remove it and see if AIC goes up again,
+if it does then I will continue with train_glm2 instead.
+
+```{r}
+train_glm3 = glm(Choice ~ .-Last_purchase-First_purchase , data = train_data, family = binomial)
+summary(train_glm3)
+```
+AIC went UP again to 1463 so I will just use train_glm2 for the rest of the 
+logistic regression classification.
+
+
+```{r}
+probabilities = predict(train_glm2,newdata = test_data, type = "response")
+predicted.classes <- ifelse(probabilities > 0.5, 1, 0)
+```
+```{r}
+summary(predicted.classes)
+```
+
+
+
+```{r}
+pred <- prediction(probabilities,test_data$Choice)
+auc <- round(as.numeric(performance(pred, measure = "auc")@y.values),3)
+```
+
+```{r}
+perf <- performance(pred, "tpr","fpr")
+plot(perf,colorize = T, main = "ROC Curve")
+text(0.5,0.5, paste("AUC:", auc))
+```
+```{r}
+plot(unlist(performance(pred, "sens")@x.values), unlist(performance(pred, "sens")@y.values), 
+     type="l", lwd=2, 
+     ylab="Sensitivity", xlab="Cutoff", main = paste("Maximized Cutoff\n","AUC: ",auc))
+
+par(new=TRUE)
+plot(unlist(performance(pred, "spec")@x.values), unlist(performance(pred, "spec")@y.values), 
+     type="l", lwd=2, col='red', ylab="", xlab="")
+axis(4, at=seq(0,1,0.2)) #specificity axis labels
+mtext("Specificity",side=4, col='red')
+
+min.diff <-which.min(abs(unlist(performance(pred, "sens")@y.values) - unlist(performance(pred, "spec")@y.values)))
+min.x<-unlist(performance(pred, "sens")@x.values)[min.diff]
+min.y<-unlist(performance(pred, "spec")@y.values)[min.diff]
+optimal <-min.x
+abline(h = min.y, lty = 3)
+abline(v = min.x, lty = 3)
+text(min.x,0,paste("optimal threshold=",round(optimal,2)), pos = 3)
+```
+
+Due to our data set being unbalanced we will need to either split our data set 
+into a more balanced set or change our cut off probability for yes/no.
+
+```{r}
+pr_class = ifelse(probabilities>0.23,1,0) #use the optimal cutoff to classify
+caret::confusionMatrix(as.factor(pr_class),as.factor(test_data$Choice))
+```
+# Logistic Regression 1 Results
+Accuracy: 0.7109
+Sensitivity: 0.7114
+Specificity: 0.7059
+
+After getting the optimal cut off, we were able to see that the data was extremely
+imbalanced so we will calculate the ratio of imbalance.
+```{r}
+choicecount = table(train_data$Choice)
+choicecount
+```
+So there are only 400 customers who would purchase the Art History of Florence
+out of 1600 total customers in our training data set.We can downsize the data sets
+in order to balance out the customers who would purchase the book vs ones who would
+not. This is a possible point to revisit, but I will run an SVM model to see if
+it will give us better initial results.
+
+## Logistic Regression Results 2
+Now I will try glm1 because it had the lowest AIC and see if it was a better model.
+
+```{r}
+probabilities = predict(train_glm1,newdata = test_data, type = "response")
+predicted.classes <- ifelse(probabilities > 0.5, 1, 0)
+```
+```{r}
+summary(predicted.classes)
+```
+
+
+
+```{r}
+pred <- prediction(probabilities,test_data$Choice)
+auc <- round(as.numeric(performance(pred, measure = "auc")@y.values),3)
+```
+
+```{r}
+perf <- performance(pred, "tpr","fpr")
+plot(perf,colorize = T, main = "ROC Curve")
+text(0.5,0.5, paste("AUC:", auc))
+```
+```{r}
+plot(unlist(performance(pred, "sens")@x.values), unlist(performance(pred, "sens")@y.values), 
+     type="l", lwd=2, 
+     ylab="Sensitivity", xlab="Cutoff", main = paste("Maximized Cutoff\n","AUC: ",auc))
+
+par(new=TRUE)
+plot(unlist(performance(pred, "spec")@x.values), unlist(performance(pred, "spec")@y.values), 
+     type="l", lwd=2, col='red', ylab="", xlab="")
+axis(4, at=seq(0,1,0.2)) #specificity axis labels
+mtext("Specificity",side=4, col='red')
+
+min.diff <-which.min(abs(unlist(performance(pred, "sens")@y.values) - unlist(performance(pred, "spec")@y.values)))
+min.x<-unlist(performance(pred, "sens")@x.values)[min.diff]
+min.y<-unlist(performance(pred, "spec")@y.values)[min.diff]
+optimal <-min.x
+abline(h = min.y, lty = 3)
+abline(v = min.x, lty = 3)
+text(min.x,0,paste("optimal threshold=",round(optimal,2)), pos = 3)
+```
+
+Due to our data set being unbalanced we will need to either split our data set 
+into a more balanced set or change our cut off probability for yes/no.
+
+```{r}
+pr_class = ifelse(probabilities>0.22,1,0) #use the optimal cutoff to classify
+caret::confusionMatrix(as.factor(pr_class),as.factor(test_data$Choice))
+```
+# Logistic Regression 2 Results
+Accuracy: 0.7187
+Sensitivity: 0.7180
+Specificity: 0.7255
+
+The glm1 gave slightly better results, but this model produced the best profit
+
+## SVM Model
+
+```{r}
+set.seed(1)
+tuned = tune.svm(Choice~., data= train_data, gamma = seq(0.01, .1, by = 0.01),
+                 cost = seq(0.1, 1, by = 0.1))
+```
+Setting seed to 1 to make the results more reproducible.
+
+```{r}
+tuned$best.parameters
+```
+Our best parameters will be a gamma 0.05 and a cost of 0.8.
+```{r}
+tuned$performances
+```
+
+```{r}
+mysvm = svm(Choice~., data = train_data, gamma = tuned$best.parameters$gamma, 
+            cost = tuned$best.parameters$cost)
+summary(mysvm)
+```
+```{r}
+svm_pred = predict(mysvm, test_data, type = 'response')
+table(pred = svm_pred, test = test_data$Choice)
+```
+
+```{r}
+caret::confusionMatrix(as.factor(svm_pred),as.factor(test_data$Choice))
+```
+Accuracy: 0.9096
+Sensitivity: 0.9800
+Specificity: 0.1863
+
+The SVM model has given the best Accuracy and Sensitivity out of the other models
+performed, but we can try to down size the model in order to improve our prior
+models. We also need to explicitly explain our results.
+
+
+We can also try to do model selection on our data using the best subset of AIC
+
+
+## Figuring out our profit
+
+```{r}
+cost = 0.65 # $0.65 to mail the catalog out
+company_book_price = 15 
+overhead = company_book_price * 0.45
+book_selling_price = 31.95
+response_rate = 0.0903 # this is the variable that needs to change based on the model
+profit_per_book = book_selling_price - (company_book_price + overhead)
+total_customers = 50000
+profit = (total_customers * response_rate) * profit_per_book - (total_customers * cost)
+profit
+```
+Baseline profit from the prior trial that BBBC conducted would net $13553. We
+will now see how much money our models will give us in profit by using the 
+TP/2300 (total number of testing obs) and then plug that number into the profit
+formula.
+
+Questions to ask in class regarding the profit formula: 
+Should we only use the amount of people who we predicted accurately or should we
+use all people who made purchases like it is suggested in the prompt?
+
+We need to proportionally scale the profit by doing 50000/2300 since our test data
+set has 2300 observations and we need to alter the amount of people we are mailing
+to based on the amount of people predicted in the model.
+
+My main concern for our formula is that we are factoring out all responses that are
+0, which in terms of the question makes sense. In the example that BBBC conducted
+with 20,000 though, they got 9.03% (~1800) of people who purchased the book. This
+means that our formula does not align with that one AND I would assume that their
+number INCLUDES BOTH TP & FP in it instead of just correct predictions. Does our 
+formula work since our main focus is to only send out mail to people who are most
+likely to make a purchase?
+
+- Using a multiplier is fine and we do not need to worry about 9.03% anymore after
+we get the comparative model baseline, which was 13553. 
+
+```{r}
+total_customers = 148 + 56 #TP & FP people who purchased
+response_rate = 148/total_customers #TP & FP people we accurately predicted to purchase
+multiplier = 50000/2300 # 50000 / test data set size
+profit = ((total_customers * response_rate) * profit_per_book - (total_customers * cost)) * multiplier
+profit
+```
+Our response rate is TP/(TP + FP) because this is the amount of people we can 
+accurately predict from our model who purchased the book. We will be eliminating 
+all the other responses from the test set because those people do not make us profit
+and then we will use a multiplier of 50000/test set size in order to scale up our model.
+
+Currently, $29,934.78 from glm2 is my best profit margin. I will re-balance the data
+and see if that will change my results.
+
+## Unsampled Model
+
+```{r}
+# Assuming 'df' is your dataframe with 'response' as the column containing 0s and 1s
+set.seed(1)
+# Calculate the number of instances in each class
+counts <- table(train_data$Choice)
+
+# Identify the minority and majority classes
+minority_class <- names(counts)[which.min(counts)]
+majority_class <- names(counts)[which.max(counts)]
+
+# Determine the number of instances in the minority class
+minority_count <- counts[minority_class]
+
+# Undersample the majority class
+undersampled_train_data <- train_data %>%
+  group_by(Choice) %>%
+  sample_n(minority_count)
+
+# Now undersampled_df contains an equal number of instances from both classes
+
+undersampled_train_data$Choice = as.factor(undersampled_train_data$Choice)
+```
+
+Dr. Roy said we need to balance the test set as well so I will do that now
+
+```{r}
+# Assuming 'df' is your dataframe with 'response' as the column containing 0s and 1s
+
+# Calculate the number of instances in each class
+counts <- table(test_data$Choice)
+
+# Identify the minority and majority classes
+minority_class <- names(counts)[which.min(counts)]
+majority_class <- names(counts)[which.max(counts)]
+
+# Determine the number of instances in the minority class
+minority_count <- counts[minority_class]
+
+# Undersample the majority class
+undersampled_test_data <- test_data %>%
+  group_by(Choice) %>%
+  sample_n(minority_count)
+
+# Now undersampled_df contains an equal number of instances from both classes
+
+undersampled_test_data$Choice = as.factor(undersampled_test_data$Choice)
+```
+
+```{r}
+undersampled_test_size = nrow(undersampled_test_data)
+undersampled_test_size
+```
+Creating this to have the number of undersampled test size in a set variable.
+
+```{r}
+und_train_glm1 = glm(Choice ~ . , data = undersampled_train_data, family = binomial)
+summary(und_train_glm1)
+```
+AIC is 885.32 in the first undersampled logistic regression
+
+```{r}
+vif(und_train_glm1)
+```
+Last_purchase has a VIF of 17 so I will remove it to reduce correlations / multicollinearity
+between the data
+
+```{r}
+und_train_glm2 = glm(Choice ~ .-Last_purchase , data = undersampled_train_data, family = binomial)
+summary(und_train_glm2)
+```
+AIC 900.11
+```{r}
+vif(und_train_glm2)
+```
+First_purchase has a VIF of 6 so we could potentially take it out, I will
+check my AIC score on the next model with Last & First Purchase removed to see
+if it is worth removing.
+
+```{r}
+und_train_glm3 = glm(Choice ~ .-Last_purchase-First_purchase , 
+                     data = undersampled_train_data, family = binomial)
+summary(und_train_glm3)
+```
+AIC went up to 902.76. I can just run all 3 models and just see what happens.
+
+## Undersampled Logit 1
+
+```{r}
+probabilities = predict(und_train_glm1,newdata = undersampled_test_data, type = "response")
+predicted.classes <- ifelse(probabilities > 0.5, 1, 0)
+```
+```{r}
+summary(predicted.classes)
+```
+
+```{r}
+pred <- prediction(probabilities,undersampled_test_data$Choice)
+auc <- round(as.numeric(performance(pred, measure = "auc")@y.values),3)
+```
+
+```{r}
+perf <- performance(pred, "tpr","fpr")
+plot(perf,colorize = T, main = "ROC Curve")
+text(0.5,0.5, paste("AUC:", auc))
+```
+```{r}
+plot(unlist(performance(pred, "sens")@x.values), unlist(performance(pred, "sens")@y.values), 
+     type="l", lwd=2, 
+     ylab="Sensitivity", xlab="Cutoff", main = paste("Maximized Cutoff\n","AUC: ",auc))
+
+par(new=TRUE)
+plot(unlist(performance(pred, "spec")@x.values), unlist(performance(pred, "spec")@y.values), 
+     type="l", lwd=2, col='red', ylab="", xlab="")
+axis(4, at=seq(0,1,0.2)) #specificity axis labels
+mtext("Specificity",side=4, col='red')
+
+min.diff <-which.min(abs(unlist(performance(pred, "sens")@y.values) - unlist(performance(pred, "spec")@y.values)))
+min.x<-unlist(performance(pred, "sens")@x.values)[min.diff]
+min.y<-unlist(performance(pred, "spec")@y.values)[min.diff]
+optimal <-min.x
+abline(h = min.y, lty = 3)
+abline(v = min.x, lty = 3)
+text(min.x,0,paste("optimal threshold=",round(optimal,2)), pos = 3)
+```
+
+
+```{r}
+pr_class = ifelse(probabilities>0.46,1,0) #use the optimal cutoff to classify
+caret::confusionMatrix(as.factor(pr_class),as.factor(undersampled_test_data$Choice))
+```
+Acc: 0.7181
+Sens: 0.7157
+Spec: 0.7206
+TP: 147 FP: 57
+
+## Undersampled Logit 2
+
+```{r}
+probabilities = predict(und_train_glm2,newdata = undersampled_test_data, type = "response")
+predicted.classes <- ifelse(probabilities > 0.5, 1, 0)
+```
+```{r}
+summary(predicted.classes)
+```
+
+```{r}
+pred <- prediction(probabilities,undersampled_test_data$Choice)
+auc <- round(as.numeric(performance(pred, measure = "auc")@y.values),3)
+```
+
+```{r}
+perf <- performance(pred, "tpr","fpr")
+plot(perf,colorize = T, main = "ROC Curve")
+text(0.5,0.5, paste("AUC:", auc))
+```
+```{r}
+plot(unlist(performance(pred, "sens")@x.values), unlist(performance(pred, "sens")@y.values), 
+     type="l", lwd=2, 
+     ylab="Sensitivity", xlab="Cutoff", main = paste("Maximized Cutoff\n","AUC: ",auc))
+
+par(new=TRUE)
+plot(unlist(performance(pred, "spec")@x.values), unlist(performance(pred, "spec")@y.values), 
+     type="l", lwd=2, col='red', ylab="", xlab="")
+axis(4, at=seq(0,1,0.2)) #specificity axis labels
+mtext("Specificity",side=4, col='red')
+
+min.diff <-which.min(abs(unlist(performance(pred, "sens")@y.values) - unlist(performance(pred, "spec")@y.values)))
+min.x<-unlist(performance(pred, "sens")@x.values)[min.diff]
+min.y<-unlist(performance(pred, "spec")@y.values)[min.diff]
+optimal <-min.x
+abline(h = min.y, lty = 3)
+abline(v = min.x, lty = 3)
+text(min.x,0,paste("optimal threshold=",round(optimal,2)), pos = 3)
+```
+
+
+```{r}
+pr_class = ifelse(probabilities>0.47,1,0) #use the optimal cutoff to classify
+caret::confusionMatrix(as.factor(pr_class),as.factor(undersampled_test_data$Choice))
+```
+Acc: 0.7206
+Sens: 0.7206
+Spec: 0.7206
+TP: 147 FP: 57
+
+## Undersampled Logit 3
+
+```{r}
+probabilities = predict(und_train_glm3,newdata = undersampled_test_data, type = "response")
+predicted.classes <- ifelse(probabilities > 0.5, 1, 0)
+```
+```{r}
+summary(predicted.classes)
+```
+
+```{r}
+pred <- prediction(probabilities,undersampled_test_data$Choice)
+auc <- round(as.numeric(performance(pred, measure = "auc")@y.values),3)
+```
+
+```{r}
+perf <- performance(pred, "tpr","fpr")
+plot(perf,colorize = T, main = "ROC Curve")
+text(0.5,0.5, paste("AUC:", auc))
+```
+```{r}
+plot(unlist(performance(pred, "sens")@x.values), unlist(performance(pred, "sens")@y.values), 
+     type="l", lwd=2, 
+     ylab="Sensitivity", xlab="Cutoff", main = paste("Maximized Cutoff\n","AUC: ",auc))
+
+par(new=TRUE)
+plot(unlist(performance(pred, "spec")@x.values), unlist(performance(pred, "spec")@y.values), 
+     type="l", lwd=2, col='red', ylab="", xlab="")
+axis(4, at=seq(0,1,0.2)) #specificity axis labels
+mtext("Specificity",side=4, col='red')
+
+min.diff <-which.min(abs(unlist(performance(pred, "sens")@y.values) - unlist(performance(pred, "spec")@y.values)))
+min.x<-unlist(performance(pred, "sens")@x.values)[min.diff]
+min.y<-unlist(performance(pred, "spec")@y.values)[min.diff]
+optimal <-min.x
+abline(h = min.y, lty = 3)
+abline(v = min.x, lty = 3)
+text(min.x,0,paste("optimal threshold=",round(optimal,2)), pos = 3)
+```
+
+
+```{r}
+pr_class = ifelse(probabilities>0.48,1,0) #use the optimal cutoff to classify
+caret::confusionMatrix(as.factor(pr_class),as.factor(undersampled_test_data$Choice))
+```
+Acc: 0.7083
+Sens: 0.7059
+Spec: 0.7108
+TP: 145 FP: 59
+
+All 3 of these models had the same TP and FP rate except for Undersampled Logit 3
+but I will plug in the best two into the formula below
+
+```{r}
+total_customers = 147 + 57 #TP & FP people who purchased
+response_rate = 147/total_customers #TP & FP people we accurately predicted to purchase
+multiplier = 50000/2300 # 50000 / test data set size
+profit = ((total_customers * response_rate) * profit_per_book - (total_customers * cost)) * multiplier
+profit
+```
+When changing the multiplier to 50000/408 when we down sampled the test set,
+current profit would now be $167,000. But we will keep the multiplier of 
+50000/2300 because it would seem unrealistic to have 70% of the people of the 
+Midwest people purchase the book.
+
+
+
+## Undersampled SVM
+
+```{r}
+set.seed(1)
+tuned = tune.svm(Choice~., data= undersampled_train_data, gamma = seq(0.01, .1, by = 0.01),
+                 cost = seq(0.1, 1, by = 0.1))
+```
+Setting seed to 1 to make the results more reproducible.
+
+```{r}
+tuned$best.parameters
+```
+Our best parameters will be a gamma 0.01 and a cost of 0.8.
+```{r}
+tuned$performances
+```
+
+```{r}
+mysvm = svm(Choice~., data = undersampled_train_data, gamma = tuned$best.parameters$gamma, 
+            cost = tuned$best.parameters$cost)
+summary(mysvm)
+```
+```{r}
+svm_pred = predict(mysvm, undersampled_test_data, type = 'response')
+table(pred = svm_pred, test = undersampled_test_data$Choice)
+```
+
+```{r}
+caret::confusionMatrix(as.factor(svm_pred),as.factor(undersampled_test_data$Choice))
+```
+Acc: 0.7822
+Sens: 0.7977
+Spec: 0.6225
+TP: 127 FP: 77
+
+
+```{r}
+total_customers = 127 + 77 #TP & FP people who purchased
+response_rate = 127/total_customers #TP & FP people we accurately predicted to purchase
+multiplier = 50000/2300 # 50000 / test data set size
+profit = ((total_customers * response_rate) * profit_per_book - (total_customers * cost)) * multiplier
+profit
+```
+Now we lost ~$4000... I will just focus on the odds ratio to see who the ideal 
+customer is for now before making more possible models.
+
+Our best profit would be coming from the undersampled logits 1 & 2.
+
+## Ideal Customers / Odds Ratio
+
+The best profit model (so far) seems to be glm1 so I will focus on the odds ratio pertaining
+to that model. 
+
+```{r}
+round(exp(train_glm2$coefficients),3)
+```
+Gender1: 0.436 0 = female, 1 = male
+Amount_purchased: 1.002
+Frequency: 0.887
+First_purchase: 1.031
+P_Child: 0.708
+P_Youth: 0.836
+P_Cook: 0.633
+P_DIY: 0.653
+P_Art: 2.938
+
+This means that if someone is a female they are 137% more likely to buy the target book.
+These odds ratios are if all other variables are held constant
+
+A one unit increase in Amount_purchase is 0.002% increased odds of someone purchasing our target book.
+A one unit increase in P_Art is a 193.8% increased odds of someone purchasing our target book.
+For every one unit decrease in Frequency, they are 11.3% less likely to purchase the target book.
+For every one unit decrease in First_purchase months, they are 3.1% less likely to purchase our target book.
+For every one unit decrease in P_Child, they are ~29.2% less likely to purchase our target book.
+For every one unit decrease in P_Youth, they are 16.4% less likely to purchase our target book.
+For every one unit decrease in P_Cook, they are 36.7% less likely to purchase our target book.
+For every one unit decrease in P_DIY, they are 34.7% less likely to purchase our target book.
+The odds of females purchasing the target book is 2.29 compared to the male 0.436. This means that if someone is a female they are 129% more likely to buy the target book.
+
+
+These odds ratios are if all other variables are held constant.
+The type of customer most likely to purchase our target book would be a female
+who has purchased art books frequently from BBBC recently compared to a male
+who does not purchase art books and has not made a purchase recently.
+
+
+## AIC Model Selection 
+```{r}
+model.null = glm(Choice ~ 1, data=train_data, family = binomial) # null model : no predictor
+model.full = glm(Choice ~ ., data=train_data, family = binomial) # full model: all predictors
+```
+
+```{r}
+step.models.AIC<-step(model.null, scope = list(upper=model.full),
+                  direction="both",test="Chisq", trace = F) 
+summary(step.models.AIC)
+```
+Looks like we lost First_purchase
+
+
+```{r}
+probabilities = predict(step.models.AIC,newdata = test_data, type = "response")
+predicted.classes <- ifelse(probabilities > 0.5, 1, 0)
+```
+```{r}
+summary(predicted.classes)
+```
+
+```{r}
+pred <- prediction(probabilities,test_data$Choice)
+auc <- round(as.numeric(performance(pred, measure = "auc")@y.values),3)
+```
+
+```{r}
+perf <- performance(pred, "tpr","fpr")
+plot(perf,colorize = T, main = "ROC Curve")
+text(0.5,0.5, paste("AUC:", auc))
+```
+```{r}
+plot(unlist(performance(pred, "sens")@x.values), unlist(performance(pred, "sens")@y.values), 
+     type="l", lwd=2, 
+     ylab="Sensitivity", xlab="Cutoff", main = paste("Maximized Cutoff\n","AUC: ",auc))
+
+par(new=TRUE)
+plot(unlist(performance(pred, "spec")@x.values), unlist(performance(pred, "spec")@y.values), 
+     type="l", lwd=2, col='red', ylab="", xlab="")
+axis(4, at=seq(0,1,0.2)) #specificity axis labels
+mtext("Specificity",side=4, col='red')
+
+min.diff <-which.min(abs(unlist(performance(pred, "sens")@y.values) - unlist(performance(pred, "spec")@y.values)))
+min.x<-unlist(performance(pred, "sens")@x.values)[min.diff]
+min.y<-unlist(performance(pred, "spec")@y.values)[min.diff]
+optimal <-min.x
+abline(h = min.y, lty = 3)
+abline(v = min.x, lty = 3)
+text(min.x,0,paste("optimal threshold=",round(optimal,2)), pos = 3)
+```
+
+
+```{r}
+pr_class = ifelse(probabilities>0.22,1,0) #use the optimal cutoff to classify
+caret::confusionMatrix(as.factor(pr_class),as.factor(test_data$Choice))
+```
+Acc: 0.71718
+Sens: 0.7171
+Spec: 0.7255
+TP: 148 FP : 56
+
+
+```{r}
+train_lda = lda(Choice ~ ., data = train_data)
+train_lda
+```
+
+```{r}
+p1 <- predict(train_lda, train_data)$class
+tab <- table(Predicted = p1, Actual = train_data$Choice)
+tab
+```
+
+```{r}
+sum(diag(tab))/sum(tab)
+```
+
+```{r}
+p2 <- predict(train_lda, test_data)$class
+tab1 <- table(Predicted = p2, Actual = test_data$Choice)
+tab1
+sum(diag(tab1))/sum(tab1)
+
+```
+Acc: 0.8891
+Sens: 0.3756    
+Spec: 0.9394
+TP: 77 FP: 127
+This model will perform poorly on profit due to many FPs.
+
+### Final Notes
+
+2/26/24: I tried to look into changing the 0,1 but I am pretty sure they are 
+correct. That was just based on feedback he gave to another group in class but I 
+had high accuracy just low specificity. I have gone back and updated the profit
+formula for the under-sampled groups due to the change in the test data set being
+under-sampled based on his feedback from class. This pretty much increased profits
+by 500% since our original test data set was 2300 and when under-sampling it 
+became 408. This led to under-sampled Logit 1 & 2 being the best models at 
+$167,500 profit but I am unsure if I feel this would be correct.
+
+I feel the only ways to attempt to improve the current models would be to 
+create another model with differing features but every time I have removed 
+variables AIC has gone down and the models usually become slightly worse by 
+gaining a few False Positives.
+
+Currently, the profit formula is the following:
+```{r}
+cost = 0.65 # $0.65 to mail the catalog out
+company_book_price = 15 
+overhead = company_book_price * 0.45 #6.75
+book_selling_price = 31.95
+profit_per_book = book_selling_price - (company_book_price + overhead) #10.2
+total_customers = 127 + 77 #TP + FP people who purchased - From UndSam Logit 1&2
+response_rate = 127/total_customers #TP/TP+FP :people we accurately predicted to purchase out all who purchased
+multiplier = 50000/2300 # 50000 / test data set size - scales our profit to study
+profit = ((total_customers * response_rate) * profit_per_book - (total_customers * cost)) * multiplier
+profit
+
+```
+After adjusting the formula to only use the multiplier of 50000/2300 because it
+is unrealistic to expect a 72% purchase rate from the random Midwest BBBC
+subscribers, we then will use Logit 2 as our best model.The best model is
+$29,934.78 from glm2 which is comparable to under-sampled glm1 with a profit of
+$29,713.04.
+
+# Visualizations
+```{r}
+total_profit = c(29047.83,29934.78, 29713.04 , 29713.04 , 29269.57, 25278.26,
+                 27273.91, 25056.52, 24834.78) #profit per model
+model_seq = c('glm1', 'glm2', 'und_glm1','und_glm2', 'und_glm3', 'und_svm_radial', 
+              'und_svm_linear', 'und_svm_mononomial', 'und_svm_sigmoid') #using this as a y variable for graph
+df = data.frame(total_profit,model_seq)
+
+# barchart with added parameters
+barplot(total_profit,
+main = "Total Profit Generated Per Model",
+xlab = "Model Name",
+ylab = "Profit in $",
+names.arg = model_seq,
+col = "darkred")
+
+my_colors <- c("#FF5733", "#33FF57", "#3366FF", "#FF33FF")
+library(viridis)
+dfplot = ggplot(data=df,
+       aes(x=model_seq, y = total_profit, fill = model_seq)) +
+  geom_col(color = 'black', show.legend = F)+
+  geom_text(aes(label=total_profit), hjust = 1)+
+  labs(title = "Total Profit Generated Per Model",
+       x = 'Model Name',
+       y = 'Profit in $' ) +
+  scale_fill_viridis_d(option = "D", end = 0.9) +
+  theme_minimal()
+dfplot + coord_flip()
+```
+Excluding svm because it performed poorly on profit (~$5500 profit which is worse
+than our baseline of ~$13000) and made the graph look ugly.
+
+
+## Adjusting SVM Kernels
+```{r}
+mysvm = svm(Choice~., data = undersampled_train_data, gamma = tuned$best.parameters$gamma, 
+            cost = tuned$best.parameters$cost, kernel = 'linear')
+summary(mysvm)
+```
+
+```{r}
+svm_pred = predict(mysvm, undersampled_test_data, type = 'response')
+table(pred = svm_pred, test = undersampled_test_data$Choice)
+```
+
+```{r}
+caret::confusionMatrix(as.factor(svm_pred),as.factor(undersampled_test_data$Choice))
+```
+
+Under-sampled SVM Linear Kernel
+Acc: 0.7206
+Sens: 0.7745
+Spec: 0.6667
+TP: 136 FP: 68
+```{r}
+cost = 0.65 # $0.65 to mail the catalog out
+company_book_price = 15 
+overhead = company_book_price * 0.45 #6.75
+book_selling_price = 31.95
+profit_per_book = book_selling_price - (company_book_price + overhead) #10.2
+total_customers = 136 + 68 #TP + FP people who purchased - From UndSam Logit 1&2
+response_rate = 136/total_customers #TP/TP+FP :people we accurately predicted to purchase out all who purchased
+multiplier = 50000/2300 # 50000 / test data set size - scales our profit to study
+profit = ((total_customers * response_rate) * profit_per_book - (total_customers * cost)) * multiplier
+profit
+```
+
+
+
+
+```{r}
+mysvm = svm(Choice~., data = undersampled_train_data, gamma = tuned$best.parameters$gamma, 
+            cost = tuned$best.parameters$cost, kernel = 'polynomial', degree = 1)
+summary(mysvm)
+```
+
+```{r}
+svm_pred = predict(mysvm, undersampled_test_data, type = 'response')
+table(pred = svm_pred, test = undersampled_test_data$Choice)
+```
+
+```{r}
+caret::confusionMatrix(as.factor(svm_pred),as.factor(undersampled_test_data$Choice))
+```
+SVM Mono-nomial Kernel
+Acc: 0.7083
+Sens: 0.7990
+Spec: 0.6176
+TP: 126 FP: 78
+```{r}
+cost = 0.65 # $0.65 to mail the catalog out
+company_book_price = 15 
+overhead = company_book_price * 0.45 #6.75
+book_selling_price = 31.95
+profit_per_book = book_selling_price - (company_book_price + overhead) #10.2
+total_customers = 126 + 78 #TP + FP people who purchased - From UndSam Logit 1&2
+response_rate = 126/total_customers #TP/TP+FP :people we accurately predicted to purchase out all who purchased
+multiplier = 50000/2300 # 50000 / test data set size - scales our profit to study
+profit = ((total_customers * response_rate) * profit_per_book - (total_customers * cost)) * multiplier
+profit
+```
+
+
+
+```{r}
+mysvm = svm(Choice~., data = undersampled_train_data, gamma = tuned$best.parameters$gamma, 
+            cost = tuned$best.parameters$cost, kernel = 'sigmoid')
+summary(mysvm)
+```
+
+```{r}
+svm_pred = predict(mysvm, undersampled_test_data, type = 'response')
+table(pred = svm_pred, test = undersampled_test_data$Choice)
+```
+
+```{r}
+caret::confusionMatrix(as.factor(svm_pred),as.factor(undersampled_test_data$Choice))
+```
+Undersampled SVM Sigmoid Kernel
+Acc: 0.7059
+Sens: 0.7990
+Spec: 0.6127
+TP: 125 FP: 79
+```{r}
+cost = 0.65 # $0.65 to mail the catalog out
+company_book_price = 15 
+overhead = company_book_price * 0.45 #6.75
+book_selling_price = 31.95
+profit_per_book = book_selling_price - (company_book_price + overhead) #10.2
+total_customers = 125 + 79 #TP + FP people who purchased - From UndSam Logit 1&2
+response_rate = 125/total_customers #TP/TP+FP :people we accurately predicted to purchase out all who purchased
+multiplier = 50000/2300 # 50000 / test data set size - scales our profit to study
+profit = ((total_customers * response_rate) * profit_per_book - (total_customers * cost)) * multiplier
+profit
+```
+
+## NORMAL DATA SET SVMS
+
+```{r}
+mysvm = svm(Choice~., data = train_data, gamma = tuned$best.parameters$gamma, 
+            cost = tuned$best.parameters$cost, kernel = 'linear')
+summary(mysvm)
+```
+
+```{r}
+svm_pred = predict(mysvm, test_data, type = 'response')
+table(pred = svm_pred, test = test_data$Choice)
+```
+
+```{r}
+caret::confusionMatrix(as.factor(svm_pred),as.factor(test_data$Choice))
+```
+
+SVM Linear Kernel
+Acc: 0.8991
+Sens: 0.9594
+Spec: 0.2794
+TP: 57 FP: 147
+```{r}
+cost = 0.65 # $0.65 to mail the catalog out
+company_book_price = 15 
+overhead = company_book_price * 0.45 #6.75
+book_selling_price = 31.95
+profit_per_book = book_selling_price - (company_book_price + overhead) #10.2
+total_customers = 57 + 147 #TP + FP people who purchased - From UndSam Logit 1&2
+response_rate = 57/total_customers #TP/TP+FP :people we accurately predicted to purchase out all who purchased
+multiplier = 50000/2300 # 50000 / test data set size - scales our profit to study
+profit = ((total_customers * response_rate) * profit_per_book - (total_customers * cost)) * multiplier
+profit
+```
+
+
+
+
+```{r}
+mysvm = svm(Choice~., data = train_data, gamma = tuned$best.parameters$gamma, 
+            cost = tuned$best.parameters$cost, kernel = 'polynomial', degree = 1)
+summary(mysvm)
+```
+
+```{r}
+svm_pred = predict(mysvm, test_data, type = 'response')
+table(pred = svm_pred, test = test_data$Choice)
+```
+
+```{r}
+caret::confusionMatrix(as.factor(svm_pred),as.factor(test_data$Choice))
+```
+SVM Mono-nomial Kernel
+Acc: 0.9122
+Sens: 0.9876
+Spec: 0.1374
+TP: 28 FP: 176
+```{r}
+cost = 0.65 # $0.65 to mail the catalog out
+company_book_price = 15 
+overhead = company_book_price * 0.45 #6.75
+book_selling_price = 31.95
+profit_per_book = book_selling_price - (company_book_price + overhead) #10.2
+total_customers = 28 + 176 #TP + FP people who purchased - From UndSam Logit 1&2
+response_rate = 28/total_customers #TP/TP+FP :people we accurately predicted to purchase out all who purchased
+multiplier = 50000/2300 # 50000 / test data set size - scales our profit to study
+profit = ((total_customers * response_rate) * profit_per_book - (total_customers * cost)) * multiplier
+profit
+```
+
+
+
+```{r}
+mysvm = svm(Choice~., data = train_data, gamma = tuned$best.parameters$gamma, 
+            cost = tuned$best.parameters$cost, kernel = 'sigmoid')
+summary(mysvm)
+```
+
+```{r}
+svm_pred = predict(mysvm, test_data, type = 'response')
+table(pred = svm_pred, test = test_data$Choice)
+```
+
+```{r}
+caret::confusionMatrix(as.factor(svm_pred),as.factor(test_data$Choice))
+```
+SVM Sigmoid Kernel
+Acc: 0.9122
+Sens: 0.9876
+Spec: 0.1373
+TP: 28 FP: 176
+```{r}
+cost = 0.65 # $0.65 to mail the catalog out
+company_book_price = 15 
+overhead = company_book_price * 0.45 #6.75
+book_selling_price = 31.95
+profit_per_book = book_selling_price - (company_book_price + overhead) #10.2
+total_customers = 28 + 176 #TP + FP people who purchased - From UndSam Logit 1&2
+response_rate = 28/total_customers #TP/TP+FP :people we accurately predicted to purchase out all who purchased
+multiplier = 50000/2300 # 50000 / test data set size - scales our profit to study
+profit = ((total_customers * response_rate) * profit_per_book - (total_customers * cost)) * multiplier
+profit
+```
+

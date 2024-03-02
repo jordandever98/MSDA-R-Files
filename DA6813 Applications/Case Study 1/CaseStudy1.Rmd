@@ -1,0 +1,450 @@
+---
+title: "Case Study 1"
+author: "Jordan Dever"
+date: "2024-01-30"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+library(car)
+library(broom)
+library(DescTools)
+library(ROCR)
+library(lmtest)
+library(dplyr)
+library(naniar)
+library(MASS)
+```
+
+
+```{r setwd}
+setwd("C:/Users/jorda/OneDrive/Documents/R-Studio/DA6813 Applications/Case Study 1")
+df_bank = read_csv2('bank-additional.csv')
+```
+Setting my personal work directory to read in the csv file. Using csv2 because it is ';' delimited.
+
+```{r}
+str(df_bank)
+```
+
+Need to convert a bunch of the character variables in to factors
+```{r}
+df_bank$job = as.factor(df_bank$job )
+df_bank$marital = as.factor(df_bank$marital )
+df_bank$education = as.factor(df_bank$education )
+df_bank$housing = as.factor(df_bank$housing )
+df_bank$loan = as.factor(df_bank$loan )
+df_bank$contact = as.factor(df_bank$contact )
+df_bank$month = as.factor(df_bank$month )
+df_bank$day_of_week = as.factor(df_bank$day_of_week )
+df_bank$poutcome = as.factor(df_bank$poutcome )
+df_bank$euribor3m  = as.numeric(df_bank$euribor3m)#???
+df_bank$y = as.factor(df_bank$y)
+
+```
+
+```{r}
+df_bank = df_bank %>% 
+  select(-duration)
+df_bank = df_bank %>% 
+  select(-default)
+```
+Removing duration because it would heavily influence the model.
+
+
+
+
+
+```{r}
+#df_bank = df_bank %>% 
+  #select(-loan)
+```
+Testing loan removal to get results in the model, did not work.
+
+
+
+
+
+```{r}
+str(df_bank)
+```
+
+Now checking for missing values
+```{r}
+is.na(unique(df_bank$contact))
+is.na(unique(df_bank$pdays))
+is.na(unique(df_bank$poutcome))
+
+unique(df_bank$month)
+na.omit(df_bank)
+```
+Searching for unknowns in the data
+Month = last called
+Pdays = is time between 2nd to last call and recent call
+```{r}
+unique(df_bank$age) # no unknown
+unique(df_bank$job) # - unknowns
+unique(df_bank$marital) # unknowns
+unique(df_bank$education) # unknowns
+unique(df_bank$default) #unknowns - remove
+unique(df_bank$housing) #unknowns
+unique(df_bank$loan) # unknowns
+unique(df_bank$contact) # no unknowns but website states there is
+
+```
+
+```{r}
+df_bank <- df_bank %>%
+  mutate(
+    pdays_cat = case_when(
+      pdays == 999 ~ 'NEVER CALLED OR ONLY CALLED ONCE',
+      pdays >= 1 & pdays <= 7 ~ '0-1 WEEKS BETWEEN LAST 2 CALLS',
+      pdays >= 8 & pdays <= 14 ~ '1-2 WEEKS BETWEEN LAST 2 CALLS',
+      pdays >= 15 & pdays <= 21 ~ '2-3 WEEK BETWEEN LAST 2 CALLS',
+      TRUE ~ NA_character_  # Using NA_character_ as the column is categorical
+    )
+  )
+df_bank = df_bank %>% 
+  select(-pdays)
+```
+
+
+```{r}
+
+```
+
+
+
+df_unknown = subset(df_bank == unknown)
+```{r}
+df_unknown = subset(df_bank == 'unknown')
+summary(df_unknown)
+```
+```{r}
+df_bank_cleaned <- df_bank[apply(df_bank, 1, function(row) !any(row == 'unknown')), ]
+```
+Lose 308 observations due to the rows having unknown / missing information 
+```{r}
+df_bank_cleaned = df_bank_cleaned %>% 
+  replace_with_na(replace=list(education = 'illiterate'))
+```
+Removing the illiterate person because they messed up the train/test split.
+```{r}
+df_bank_cleaned = na.omit(df_bank_cleaned)
+summary(subset(df_bank_cleaned == 'unknown'))
+```
+
+Need to visualize the data, and split into training/testing
+
+
+```{r}
+set.seed(1)
+index = sample(1:nrow(df_bank_cleaned), 0.8*nrow(df_bank_cleaned))
+banktrain = df_bank_cleaned[index,]
+banktest = df_bank_cleaned[-index,]
+```
+Setting the random seed to 1 then splitting the data into train and test data sets
+so we can evaluate our model.
+
+```{r}
+summary(banktrain$education)
+summary(banktest$education)
+```
+
+```{r}
+m1 = glm(y ~., data = banktrain ,family = binomial)
+m1 #this model has the lowest AIC
+```
+```{r}
+vif(m1)
+```
+After checking for multicollinearity, month had a GVIF of 41 which was the highest.
+We will remove month and then check again.
+```{r}
+m2 = glm(y ~.-month, data = banktrain ,family = binomial)
+m2
+```
+```{r}
+vif(m2)
+```
+poutcome is highly correlated at a GVIF of 32 so will drop that next.
+
+```{r}
+m3 = glm(y ~.-month-poutcome, data = banktrain ,family = binomial)
+m3
+```
+```{r}
+vif(m3)
+```
+euribor3m is now the highest at a GVIF of 12, so we will remove that now.
+
+```{r}
+m4 = glm(y ~.-month-poutcome-euribor3m, data = banktrain, family = binomial)
+m4
+```
+```{r}
+vif(m4)
+```
+Job has a GVIF of 5.08, so we could potentially remove it but we will keep it.
+
+```{r}
+summary(m4)
+```
+```{r}
+unique(df_bank_cleaned$loan)
+```
+
+
+
+```{r}
+probabilities = predict(m4,newdata = banktest, type = "response")
+predicted.classes <- ifelse(probabilities > 0.5, 1, 0)
+```
+```{r}
+summary(predicted.classes)
+```
+
+
+
+```{r}
+pred <- prediction(probabilities,banktest$y)
+auc <- round(as.numeric(performance(pred, measure = "auc")@y.values),3)
+```
+
+```{r}
+perf <- performance(pred, "tpr","fpr")
+plot(perf,colorize = T, main = "ROC Curve")
+text(0.5,0.5, paste("AUC:", auc))
+```
+```{r}
+plot(unlist(performance(pred, "sens")@x.values), unlist(performance(pred, "sens")@y.values), 
+     type="l", lwd=2, 
+     ylab="Sensitivity", xlab="Cutoff", main = paste("Maximized Cutoff\n","AUC: ",auc))
+
+par(new=TRUE)
+plot(unlist(performance(pred, "spec")@x.values), unlist(performance(pred, "spec")@y.values), 
+     type="l", lwd=2, col='red', ylab="", xlab="")
+axis(4, at=seq(0,1,0.2)) #specificity axis labels
+mtext("Specificity",side=4, col='red')
+
+min.diff <-which.min(abs(unlist(performance(pred, "sens")@y.values) - unlist(performance(pred, "spec")@y.values)))
+min.x<-unlist(performance(pred, "sens")@x.values)[min.diff]
+min.y<-unlist(performance(pred, "spec")@y.values)[min.diff]
+optimal <-min.x
+abline(h = min.y, lty = 3)
+abline(v = min.x, lty = 3)
+text(min.x,0,paste("optimal threshold=",round(optimal,2)), pos = 3)
+```
+
+Due to our data set being unbalanced we will need to either split our data set 
+into a more balanced set or change our cut off probability for yes/no.
+
+```{r}
+pr_class = ifelse(probabilities>0.08,'yes','no') #use the optimal cutoff to classify
+#pr_class <- factor(pr_class, levels = levels(banktest$y))
+caret::confusionMatrix(as.factor(pr_class),as.factor(banktest$y))
+```
+Our first model gave us an accuracy score of  0.6627 and a sensitivity of 0.6637
+and a specificity of 0.6543. We are more focused on sensitivity in our model, so we
+will work to improve it to correctly predict true positives.
+One way to look at improving our sensitivity could be to fix our imbalanced data
+to have the same amount of yes and no responses.
+
+```{r}
+yescount <- table(df_bank_cleaned$y)
+yescount
+```
+```{r}
+# Assuming 'df' is your dataframe with 'response' as the column containing 0s and 1s
+
+# Calculate the number of instances in each class
+counts <- table(df_bank_cleaned$y)
+
+# Identify the minority and majority classes
+minority_class <- names(counts)[which.min(counts)]
+majority_class <- names(counts)[which.max(counts)]
+
+# Determine the number of instances in the minority class
+minority_count <- counts[minority_class]
+
+# Undersample the majority class
+undersampled_df_bank <- df_bank_cleaned %>%
+  group_by(y) %>%
+  sample_n(minority_count)
+
+# Now undersampled_df contains an equal number of instances from both classes
+
+undersampled_df_bank$y = as.factor(undersampled_df_bank$y)
+```
+
+
+### Undersampled model
+
+```{r}
+set.seed(1)
+index = sample(1:nrow(undersampled_df_bank), 0.8*nrow(undersampled_df_bank))
+banktrain2 = undersampled_df_bank[index,]
+banktest2 = undersampled_df_bank[-index,]
+```
+
+Banktest2 & banktrain 2 are both using 3000 less samples compared to banktest & banktrain
+
+
+
+```{r}
+m5 = glm(y ~., data = banktrain2 ,family = binomial)
+m5 
+```
+
+```{r}
+vif(m5)
+```
+Month gvif = 136, removing
+
+```{r}
+m6 = glm(y ~.-month, data = banktrain2 ,family = binomial)
+m6
+```
+
+
+```{r}
+vif(m6)
+```
+poutcome gvif 97, removing
+
+```{r}
+m7 = glm(y ~.-month-poutcome, data = banktrain2 ,family = binomial)
+m7 
+```
+
+```{r}
+vif(m7)
+```
+euribor3m 18, removing
+
+```{r}
+m8 = glm(y ~.-month-poutcome-euribor3m, data = banktrain2 ,family = binomial)
+m8 
+```
+```{r}
+vif(m8)
+```
+job is at 6, removing.
+```{r}
+m9 = glm(y ~.-month-poutcome-euribor3m-job, data = banktrain2 ,family = binomial)
+m9
+```
+
+```{r}
+vif(m9)
+```
+all under 5, continuing
+
+
+```{r}
+probabilities = predict(m9,newdata = banktest2, type = "response")
+predicted.classes <- ifelse(probabilities > 0.5, 1, 0)
+```
+
+
+
+
+```{r}
+pred <- prediction(probabilities,banktest2$y)
+auc <- round(as.numeric(performance(pred, measure = "auc")@y.values),3)
+```
+
+```{r}
+perf <- performance(pred, "tpr","fpr")
+plot(perf,colorize = T, main = "ROC Curve")
+text(0.5,0.5, paste("AUC:", auc))
+```
+```{r}
+plot(unlist(performance(pred, "sens")@x.values), unlist(performance(pred, "sens")@y.values), 
+     type="l", lwd=2, 
+     ylab="Sensitivity", xlab="Cutoff", main = paste("Maximized Cutoff\n","AUC: ",auc))
+
+par(new=TRUE)
+plot(unlist(performance(pred, "spec")@x.values), unlist(performance(pred, "spec")@y.values), 
+     type="l", lwd=2, col='red', ylab="", xlab="")
+axis(4, at=seq(0,1,0.2)) #specificity axis labels
+mtext("Specificity",side=4, col='red')
+
+min.diff <-which.min(abs(unlist(performance(pred, "sens")@y.values) - unlist(performance(pred, "spec")@y.values)))
+min.x<-unlist(performance(pred, "sens")@x.values)[min.diff]
+min.y<-unlist(performance(pred, "spec")@y.values)[min.diff]
+optimal <-min.x
+abline(h = min.y, lty = 3)
+abline(v = min.x, lty = 3)
+text(min.x,0,paste("optimal threshold=",round(optimal,2)), pos = 3)
+```
+
+Due to our data set being unbalanced we will need to either split our data set 
+into a more balanced set or change our cut off probability for yes/no.
+
+```{r}
+pr_class = ifelse(probabilities>0.47,'yes','no') #use the optimal cutoff to classify
+#pr_class <- factor(pr_class, levels = levels(banktest$y))
+caret::confusionMatrix(as.factor(pr_class),as.factor(banktest2$y))
+```
+
+# Testing m8 (job not removed)
+
+
+```{r}
+probabilities = predict(m8,newdata = banktest2, type = "response")
+predicted.classes <- ifelse(probabilities > 0.5, 1, 0)
+
+```
+
+
+
+
+```{r}
+pred <- prediction(probabilities,banktest2$y)
+auc <- round(as.numeric(performance(pred, measure = "auc")@y.values),3)
+
+```
+
+```{r}
+perf <- performance(pred, "tpr","fpr")
+plot(perf,colorize = T, main = "ROC Curve")
+text(0.5,0.5, paste("AUC:", auc))
+
+```
+```{r}
+plot(unlist(performance(pred, "sens")@x.values), unlist(performance(pred, "sens")@y.values), 
+     type="l", lwd=2, 
+     ylab="Sensitivity", xlab="Cutoff", main = paste("Maximized Cutoff\n","AUC: ",auc))
+
+par(new=TRUE)
+plot(unlist(performance(pred, "spec")@x.values), unlist(performance(pred, "spec")@y.values), 
+     type="l", lwd=2, col='red', ylab="", xlab="")
+axis(4, at=seq(0,1,0.2)) #specificity axis labels
+mtext("Specificity",side=4, col='red')
+
+min.diff <-which.min(abs(unlist(performance(pred, "sens")@y.values) - unlist(performance(pred, "spec")@y.values)))
+min.x<-unlist(performance(pred, "sens")@x.values)[min.diff]
+min.y<-unlist(performance(pred, "spec")@y.values)[min.diff]
+optimal <-min.x
+abline(h = min.y, lty = 3)
+abline(v = min.x, lty = 3)
+text(min.x,0,paste("optimal threshold=",round(optimal,2)), pos = 3)
+
+```
+
+Due to our data set being unbalanced we will need to either split our data set 
+into a more balanced set or change our cut off probability for yes/no.
+
+```{r}
+pr_class = ifelse(probabilities>0.48,'yes','no') #use the optimal cutoff to classify
+#pr_class <- factor(pr_class, levels = levels(banktest$y))
+caret::confusionMatrix(as.factor(pr_class),as.factor(banktest2$y))
+
+```
+
+
+
