@@ -1,0 +1,48 @@
+---
+title: "My First Dashboard"
+output: 
+  flexdashboard::flex_dashboard:
+    orientation: columns
+    vertical_layout: fill
+---
+
+```{r setup, include=FALSE}
+library(flexdashboard)
+library(tidyverse)
+library(highcharter)
+```
+
+Column {data-width=650}
+-----------------------------------------------------------------------
+
+### Chart A
+
+```{r}
+mpg %>%
+  filter(!class %in% c('2seater', 'minivan')) %>% 
+  hchart('scatter' , hcaes(x = displ, y = hwy, group = class)) %>% 
+  hc_add_theme(hc_theme_538())
+
+```
+
+Column {data-width=350}
+-----------------------------------------------------------------------
+
+### Chart B
+
+```{r}
+mpg %>% 
+  ggplot(aes(x=displ, y = hwy, color =class)) +
+  geom_point() + 
+  theme_minimal()
+```
+
+### Chart C
+
+```{r}
+mpg %>% 
+  select(manufacturer, model, class, displ, hwy) %>% 
+  head(10) %>% 
+  knitr :: kable()
+```
+

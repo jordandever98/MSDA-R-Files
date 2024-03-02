@@ -1,0 +1,167 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+## gapminder example
+
+Let's recreate Hans Rosling's famous visualization. If you have never seen it, check out this long video: <https://www.ted.com/talks/hans_rosling_the_best_stats_you_ve_ever_seen>
+
+However, for the sake of brevity, watch this video:
+
+https://www.youtube.com/embed/Z8t4k0Q8e8Y
+
+Install `gapminder` package for this example.
+
+install.packages('gapminder')
+
+```{r setup, include=FALSE}
+
+pacman::p_load(plotly, tidyverse, gapminder, here)
+
+```
+
+Get the data from `gapminder`
+
+```{r}
+data(gapminder, package = "gapminder")
+```
+
+Next, let's create a static `ggplot2` visualization. Note that `frame` and `ids` are the aesthetics that we have never used before. This is because they don't belong to `ggplot2`. They come from `plotly`. So, `ggplot2` will simply ignore them.
+
+Usually we map a time variable to `frame` and cross-sectional id variable to `ids`.
+
+```{r}
+library(ggplot2)
+gg <- ggplot(gapminder, 
+             aes(x = gdpPercap, y = lifeExp, color = continent)) +
+  geom_point(aes(size = pop, frame = year, ids = country)) + #ids is important for knowing the country of each individual point
+  scale_x_log10() +
+  labs(x = 'GDP per Capital',
+       y = 'Life Expectancy',
+       color = 'Continent') +
+  scale_color_manual(values = wesanderson::wes_palette("Moonrise3")) +
+  theme_minimal() 
+```
+
+Now is the time for some `plotly` magic!
+
+```{r}
+ggplotly(gg)
+```
+
+## Using `plotly`'s own functionality
+
+Above, we used `ggplot2` to build the graphics and then just modified it using `plotly`. However, `plotly` is a powerful library with tons of functionality of its own. Check out this documentation - <https://plotly.com/r/getting-started/>
+
+Let's create a base plot:
+
+```{r}
+base <- gapminder %>%
+  plot_ly(x = ~ gdpPercap,
+          y = ~ lifeExp,
+          size = ~ pop,
+          color = ~ continent,
+          text = ~ country,
+          hoverinfo = "text") %>%
+  layout(xaxis = list(type = "log"))
+```
+
+Next, modify the base plot and display it:
+
+```{r message=FALSE, warning=FALSE}
+base %>%
+  add_markers(frame = ~ year,
+              ids = ~ country) %>%
+  animation_opts(1000, 
+                 easing = "linear-out", 
+                 redraw = FALSE
+                 ) %>%
+  animation_button( x = 1,
+                    xanchor = "right",
+                    y = 0,
+                    yanchor = "bottom"
+                    ) %>%
+  animation_slider(currentvalue = list(prefix = "Year: ",
+                                       font = list(color = "red")
+                                       )
+                   )
+
+```
+
+## Cumulative animation
+
+We will now create a progressing time series of Amazon Inc market value. You can call it a worm plot!
+
+Read Amazon's monthly stock returns
+
+Please download this file from here: <https://github.com/ashgreat/DA6233>
+
+And save it in a subdirectory "Data" in your project folder.
+
+```{r}
+amzn <- read_csv(here::here('Data', 'amzn_2005_2020.csv')) %>% 
+  mutate(mktval = PRC*SHROUT*1000,
+         date2 = as.Date(as.character(date), format = '%Y%m%d')) %>% 
+  filter(!is.na(mktval)) %>% 
+  mutate(id = row_number())
+
+head(amzn)
+
+```
+
+In order to create a worm, `plotly` needs to create multiple data sets capturing the progress. First data set will effectively have only one observation for the first month. The second data set will have 2 observations, and so on. These are all stacked on top of each other to get a large data set.
+
+```{r}
+accumulate_by <- function(dat, var) {
+  var <- lazyeval::f_eval(var, dat)
+  lvls <- plotly:::getLevels(var)
+  dats <- lapply(seq_along(lvls), function(x) {
+    cbind(dat[var %in% lvls[seq(1, x)], ], frame = lvls[[x]])
+  })
+  dplyr::bind_rows(dats)
+}
+
+amzn2 <- amzn %>% accumulate_by(~id)
+head(amzn2)
+
+```
+
+Finally, the worm plot!
+
+```{r}
+p <- amzn2 %>%
+  plot_ly(
+    x = ~ id, 
+    y = ~ mktval,
+    frame = ~frame, 
+    type = 'scatter',
+    mode = 'lines'
+  ) %>% 
+  layout(
+    xaxis = list(
+      title = "Date",
+      zeroline = F
+    ),
+    yaxis = list(
+      title = "Market Value",
+      zeroline = F
+    )
+  ) %>%
+  animation_opts(
+    frame = 10,
+    transition = 0,
+    redraw = FALSE
+  ) %>%
+  animation_slider(
+    hide = T
+  ) %>%
+  animation_button(
+    x = 1,
+    xanchor = "right",
+    y = 0,
+    yanchor = "bottom"
+  )
+
+p
+```

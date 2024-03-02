@@ -1,0 +1,331 @@
+---
+title: "Highcharter Examples"
+output:
+  html_notebook:
+    theme: cosmo
+editor_options:
+  chunk_output_type: inline
+---
+
+```{r setup, echo=FALSE, message=FALSE}
+
+pacman::p_load(tidyverse, highcharter, tidytext, quantmod)
+pacman::p_load_gh("lchiffon/wordcloud2")
+
+d1 <- read_csv(here::here("data", "tech_stocks_csv.zip"))
+```
+
+## Bar chart
+
+Create a bar chart of Meta (Facebook) profits by fiscal year
+
+```{r}
+d1 %>% 
+  filter(tic == "META") %>% 
+  hchart(type = "column" ,hcaes(x = as.factor(fyear), y = oibdp)) %>% 
+  hc_add_theme(hc_theme_economist())
+```
+
+*Play around with a few themes and then finalize one theme:* 
+https://jkunst.com/highcharter/articles/themes.html#themes-1
+https://jkunst.com/highcharter/reference/index.html#section-themes
+
+
+When you hover mouse over the bars, you will notice the tooltip shows "Series 1" rather than the variable name `oibdp`. Admittedly, both "Series 1" and `oibdp` are equally obtuse but we can do better. Let's label the series "Operating Profits"
+
+```{r}
+d1 %>% 
+  filter(tic == "META") %>% 
+  hchart("column" ,hcaes(x = fyear, y = oibdp), name = "Operating Income") %>% # name belongs to the series not the HCaes
+  hc_add_theme(hc_theme_monokai())
+```
+
+When you hover mouse over the bars, you will notice the tooltip shows "Series 1" rather than the variable name `oibdp`. Admittedly, both "Series 1" and `oibdp` are equally obtuse but we can do better. Let's label the series "Operating Profits"
+
+
+```{r}
+d1 %>% 
+  filter(tic == "META") %>% 
+  hchart("column" ,hcaes(x = fyear, y = oibdp)) %>% 
+  hc_tooltip(
+    headerFormat = "<b>Fiscal Year: {point.key}</b> <br>",
+    pointFormat = "<b>Operating Profit: {point.y}</b>") %>% 
+  hc_add_theme(hc_theme_monokai())
+```
+
+Change the axes titles
+
+```{r}
+d1 %>% 
+  filter(tic == "META") %>% 
+  hchart("column" ,hcaes(x = fyear, y = oibdp)) %>% 
+  hc_tooltip(
+    headerFormat = "<b>Fiscal Year: {point.key}</b> <br>",
+    pointFormat = "<b>Operating Profit: {point.y}</b>") %>% 
+  hc_xAxis(title = list(text = "Fiscal Year",
+                        style = list(color = "#000000", fontWeight = "bold")),
+           labels = list(rotation = 270),
+           formatter = JS("
+                          ")) %>% 
+  hc_yAxis(title = list(text = "Operating Income in Million USD",
+                        style = list(color = "#000000", fontWeight = "bold"))) %>% 
+  hc_add_theme(hc_theme_ft())
+```
+
+Add title and subtitle
+
+```{r}
+d1 %>% 
+  filter(tic == "META") %>% 
+  hchart("column" ,hcaes(x = fyear, y = oibdp)) %>% 
+  hc_tooltip(
+    headerFormat = "<b>Fiscal Year: {point.key}</b> <br>",
+    pointFormat = "<b>Operating Profit: {point.y}</b>") %>% 
+  hc_xAxis(title = list(text = "Fiscal Year")) %>% 
+  hc_yAxis(title = list(text = "Operating Income in Million USD")) %>% 
+  hc_title(text = "Evil = Profitable??", align = "center") %>%
+  hc_subtitle(text = "Despite all the scandals, Facebook's operating income is consistently growing",
+              align = "center") %>% 
+  hc_add_theme(hc_theme_monokai())
+```
+
+
+Add an emoji to the title. This requires `useHTML` set to `TRUE` inside `hc_title()`. You can get a relevant decimal code for any emoji online. For example, check this out:
+https://www.w3schools.com/charsets/ref_emoji.asp
+
+
+```{r}
+d1 %>% 
+  filter(tic == "META") %>% 
+  hchart("column" ,hcaes(x = fyear, y = oibdp)) %>% 
+  hc_tooltip(
+    headerFormat = "<b>Fiscal Year: {point.key}</b> <br>",
+    pointFormat = "<span style= 'color: #f82267'>\U25CF </span><b> Operating Profit: {point.y}</b>") %>% 
+  hc_xAxis(title = list(text = "Fiscal Year")) %>% 
+  hc_yAxis(title = list(text = "Operating Income in Million USD")) %>% 
+  hc_title(text = '<span style="font-family: helvetica, arial, sans-serif;"><strong><span style="color: #3598db;">Evil = Profitable??</span></strong></span> <span>&#128520;</span>',
+           useHTML = TRUE, align = "center") %>%
+  hc_subtitle(text = "Despite all the scandals, Facebook operating income is consistently growing",
+              align = "center") %>% 
+  hc_add_theme(hc_theme_monokai())
+```
+
+## Line graph
+
+Plot a line graph of Apple's leverage ratio over the years.
+
+The leverage ratio is given by `(dltt + dlc) / at` where `dltt` is long-term debt and `dlc` is short-term debt. If any of these variables is missing, we should assume they are 0.
+
+```{r}
+d1 %>% 
+  filter(tic == "AAPL") %>% 
+  mutate(leverage = (replace_na(dltt, 0) + replace_na(dlc, 0))/ at,
+         leverage = round(leverage, 2)) %>% 
+  hchart("line", hcaes(x = fyear, y = leverage), name = "Leverage") %>% 
+  hc_add_theme(hc_theme_bloom())
+```
+
+## Scatterplot
+
+Create a scatterplot of profit by sales
+
+```{r}
+d1 %>% 
+  hchart("scatter", hcaes(x = sale, y = oibdp, group = conm)) %>% 
+  hc_add_theme(hc_theme_538())
+```
+
+Here, the colors are repeating because the color palette doesn't have 7 unique colors. We can pass our own colors using `hc_colors()`. I will use `viridis` color palettes because it has 256 colors.
+
+Notice that cols has 8 characters instead of 6 as expected in the hex code. The two extra characters are for alpha. We have to remove them before we can use them here. Read more about it here: https://www.quackit.com/css/color/values/css_hex_color_notation_8_digits.cfm
+
+```{r}                                     
+cols <- viridisLite::viridis(10, option = "H")
+
+cols <- substr(cols, 0, 7) # This will retain first 7 characters including the # sign.
+
+d1 %>% 
+  hchart("scatter", hcaes(x = sale, y = oibdp, group = conm)) %>% 
+  hc_add_theme(hc_theme_538()) %>% 
+  hc_colors(cols)
+```
+
+Use `pals` package for more discrete colors:
+https://rdrr.io/cran/pals/man/discrete.html
+
+
+```{r}
+cols <- pals::alphabet() %>% unname()
+# unname will remove the names from the vector. Highcharter throws an error if you pass a named vector with colors.
+
+d1 %>% 
+  hchart("scatter", hcaes(x = sale, y = oibdp, group = conm)) %>% 
+  hc_add_theme(hc_theme_538()) %>% 
+  hc_colors(cols)
+```
+
+## Adding a regression line to the scatterplot
+
+We will use a regression plugin to get a regression line. The plugins are available in the following folder on your computer:
+
+dir(system.file("htmlwidgets/lib/highcharts/plugins", package = "highcharter"))
+
+
+```{r}
+d1 %>% 
+  filter(tic == "AAPL") %>% 
+  hchart("scatter", hcaes(x = sale, y = oibdp), regression = TRUE) %>%
+  hc_add_dependency("plugins/highcharts-regression.js") %>%
+  hc_add_theme(hc_theme_538())
+```
+
+
+
+## Heatmap
+
+We did not see static heatmaps with `ggplot2` so let's learn how to get them using highcharter
+
+To create a heatmap, highcharter needs a data frame or a matrix. A matrix is a data object similar to a data frame as it is 2D. However, a matrix must have ALL its elements of the same class. This is different from a data frame where every column must have elements of the same class but two columns may have different classes.
+
+The most common heatmap is a correlation plot. `cor()` function from base R outputs a matrix of correlations. Here we visualize correlations between multiple variables in the data set.
+
+
+```{r}
+cor_dt = d1 %>%
+  select(sale, oibdp, cogs, at, xrd, mkvalt, che, capx) %>% 
+  drop_na() %>% 
+  cor()
+```
+
+
+```{r}
+ cor_dt %>% 
+  hchart() %>% 
+    hc_colorAxis(
+    stops = color_stops(colors = rev(c("#000004FF", 
+                                   "#56106EFF", 
+                                   "#BB3754FF", 
+                                   "#F98C0AFF", 
+                                   "#FCFFA4FF")))
+    )
+```
+
+Why are all the correlations positive? For example, why is the correlation between profits (`oibdp`) and the costs (`cogs`) positive? Shouldn't that be negative?
+
+
+```{r}
+d2 <- d1 %>%
+  select(sale, oibdp, cogs, at, xrd, mkvalt, che, capx) %>% 
+  drop_na()
+
+d2 %>% 
+  mutate(across(everything(), ~.x/sale)) %>% 
+  select(-sale) %>% 
+  cor() %>%
+  hchart()
+```
+
+JB has given an example of heatmap using a data frame here:
+https://jkunst.com/highcharter/articles/highcharter.html
+
+## Pie chart
+
+Let's create a pie chart for all the profits in the fiscal year 2021. This will be an ugly pie chart because there are 10 companies in the data. But interactive pie charts make life a little bit easier!
+
+```{r}
+d1 %>% 
+  filter(fyear == 2021) %>%
+  arrange(oibdp) %>% 
+  mutate(conm = str_to_title(conm)) %>% # Convert company names to title case
+  hchart("pie", hcaes(x = conm, y = oibdp))
+```
+
+Change the tooltip to show the series name:
+
+```{r}
+d1 %>% 
+  filter(fyear == 2021) %>%
+  arrange(oibdp) %>% 
+  mutate(conm = str_to_title(conm)) %>% 
+  hchart("pie", hcaes(x = conm, y = oibdp), name = "Operating Profit")
+```
+
+
+## Wordcloud
+
+Highcharter has a module that allows us to create wordclopuds with minimal effort.
+
+To create the wordcloud, we need words and their frequencies from text. For this example, I will use a few random tweets collected in November 2021.
+
+```{r}
+tweets = readRDS(here::here("data", "file001.rds"))
+```
+
+We will use tidytext package for getting the words from the tweets.
+
+```{r}
+tweet_text = tibble(text = tweets$text) %>% 
+  mutate(text = gsub(x = text, pattern = "[0-9]+|[[:punct:]]|\\(.*\\)", replacement = "")) %>% 
+  tidytext::unnest_tokens(word, text)
+```
+
+Next, let's delete common words that don't add much to the analysis. These are words such as "the", "and", etc. and called stopwords.
+
+```{r}
+data(stop_words)
+
+tweet_text = tweet_text %>% anti_join(stop_words)
+
+```
+
+```{r}
+tweet_text %>% 
+  count(word, sort = TRUE)
+```
+
+We can remove other commonly occurring useless words as follows:
+
+```{r}
+tweet_text = tweet_text %>% 
+  filter(!word %in% c("im", "dont", "amp", "youre", "ive", "hes", "didnt", "isnt"))
+```
+
+Now we are ready for the wordcloud
+
+```{r}
+word_freq = tweet_text %>% 
+  count(word, sort = T)
+```
+
+
+```{r}
+word_freq %>% 
+  filter(n > 100) %>% 
+  hchart("wordcloud", hcaes(name = word, weight = n), name = "Count")
+```
+
+Wordcloud using wordcloud2 package
+
+```{r}
+word_freq %>% 
+  filter(n > 100) %>% 
+  wordcloud2(color = "random-light", backgroundColor = "black",
+             minRotation = 0, maxRotation = 0)
+```
+
+## Visualizing stock market data
+
+We will compare the stock price movement of Apple and Microsoft
+
+```{r}
+aapl = getSymbols("AAPL", auto.assign = FALSE)
+msft = getSymbols("MSFT", auto.assign = FALSE)
+```
+
+```{r}
+highchart(type = "stock") %>% 
+  hc_add_series(aapl) %>% 
+  hc_add_series(msft)
+```
+
+

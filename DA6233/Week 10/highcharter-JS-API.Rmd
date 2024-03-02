@@ -1,0 +1,35 @@
+---
+title: "highcharter-JS to R"
+author: "Ashwin Malshe"
+date: "10/24/2023"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+pacman::p_load(highcharter, tidyverse)
+```
+
+Highcharter documentation is sparse because it is a wrapper for highcharts JS library. As such, highcharter links to the highcharts documentation. It's crucial that we understand how to use the JS documentation and how to bring that in R.
+
+In this tutorial, we will see how to do it.
+
+Let's start with a basic data set like `mpg` and make a base plot.
+
+
+```{r}
+hc1 <- mpg %>% filter(class != "minivan") %>% 
+  hchart("scatter", hcaes(x = cty, y = hwy, group = class)) %>%
+  hc_legend(backgroundColor =  '#FCFFC5',
+            layout = "horizontal",
+            shadow = TRUE,
+            title = list(text = "Vehicle Class",
+                         style = list(fontWeight = "normal",
+                                      color = "red"))) %>%
+  hc_tooltip(pointFormat = "City mileage: <b>{point.x} mpg</b><br/>Highway mileage: <b>{point.y} mpg</b><br/>")
+
+hc1
+```
+
+
+

@@ -1,0 +1,82 @@
+---
+title: "R Notebook"
+output: html_notebook
+editor_options: 
+  chunk_output_type: inline
+---
+
+```{r setup, include=FALSE}
+library(highcharter)
+library(tidyverse)
+```
+
+
+We will make a US map of the arrests. This is an old data set from 1973! From the data description:
+
+*This data set contains statistics, in arrests per 100,000 residents for assault, murder, and rape in each of the 50 US states in 1973. Also given is the percent of the population living in urban areas.*
+
+```{r}
+data("USArrests", package = "datasets")
+head(USArrests)
+```
+
+We will combine this data set with the US map using a variable `woe-name` which is missing from this data set. But as it turns out, this can be extracted from the row names of this dataset
+
+```{r}
+USArrests2 <- dplyr::mutate(USArrests, `woe-name` = rownames(USArrests))
+
+head(USArrests2)
+
+```
+
+
+```{r}
+hcmap(map = "countries/us/us-all", 
+      data = USArrests2,
+      joinBy = "woe-name",
+      value = "Murder",
+      name = "Murder Rate per 100,000",
+      download_map_data = TRUE) 
+
+```
+
+```{r}
+hcmap(map = "countries/us/us-all", 
+      data = USArrests2,
+      joinBy = "woe-name",
+      value = "Rape",
+      name = "Rape Rate per 100,000",
+      nullColor = "#DADADA", # If there are null observations
+      download_map_data = TRUE) 
+
+```
+
+
+
+
+We will map US unemployment data. This is a granular data at the county level.
+
+
+```{r}
+
+data(unemployment)
+
+head(unemployment)
+```
+
+Now let's make a map. Note that we are providing `hcmap()` a map of the US and then the unemployment data. These two data sets are merged using `joinBy` argument.
+
+
+```{r}
+
+hcmap(map = "countries/us/us-all-all", #highcharter will download this from highcharts server
+      data = unemployment, # This is what we provide
+      name = "Unemployment",
+      value = "value",
+      joinBy = c("hc-key", "code"), # The code is the county code
+      borderColor = "transparent") %>%
+  hc_colorAxis(dataClasses = color_classes(c(seq(0, 10, by = 2), 50))) %>% 
+  hc_legend(layout = "vertical", align = "right",
+            floating = TRUE, valueDecimals = 0, valueSuffix = "%") 
+```
+

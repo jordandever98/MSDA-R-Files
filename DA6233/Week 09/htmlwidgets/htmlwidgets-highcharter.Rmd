@@ -1,0 +1,112 @@
+---
+title: "htmlwidgets"
+author: "Ashwin Malshe"
+date: "10/17/2023"
+output: html_document
+editor_options:
+  chunk_output_type: inline
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+# library(highcharter)
+# library(tidyverse)
+pacman::p_load(highcharter, tidyverse)
+
+```
+
+For the first exercise, we will use `citytemp` data from `highcharter` package.
+
+```{r}
+data(citytemp)
+```
+
+```{r}
+citytemp %>% 
+  pivot_longer(cols = where(is.numeric), names_to = "city", values_to = "temperature") %>% 
+  hchart('line', hcaes(x=month,y=temperature,group =city))
+```
+
+
+
+```{r}
+hc <- highchart() %>% 
+  hc_xAxis(categories = citytemp$month) %>% 
+  hc_add_series(name = "Tokyo", data = citytemp$tokyo) %>% 
+  hc_add_series(name = "London", data = citytemp$london) %>% 
+  hc_add_series(name = "NYC", data = citytemp$new_york) %>% 
+  hc_add_series(name = "Berlin", data = citytemp$berlin)
+hc
+
+```
+
+
+
+
+```{r}
+
+
+hc %>% 
+  hc_yAxis(title = list(text = "Temperature on y Axis",
+                        style = list(color = 'hotpink', fontsize = '1.8em')),
+           opposite = TRUE,
+           #minorTickInterval = "auto",
+           #minorGridLineDashStyle = "LongDashDotDot",
+           showFirstLabel = FALSE,
+           showLastLabel = FALSE) %>% 
+    hc_xAxis(title = list(text = "Month on x Axis"
+                          ),
+           opposite = TRUE) %>% 
+  hc_colors(viridis::inferno(4)) %>% 
+  hc_add_theme(hc_theme_bloom()) 
+```
+## Examples are from the author of the package
+
+Most of these examples are from this website:
+
+https://rpubs.com/jbkunst/230276
+
+Highcharter has several themes. You can set the theme upfront as follows:
+
+```{r eval=FALSE}
+options(highcharter.theme = hc_theme_monokai())
+```
+
+Above I am setting a simple theme. More themes are available here:
+http://jkunst.com/highcharts-themes-collection/
+
+
+Create a sample data frame
+
+```{r}
+df <- data.frame(xval = 1:10) %>% 
+  mutate(
+    yval = 10 + xval + 10 * sin(xval),
+    yval = round(yval, 1),
+    zval = (xval*yval) - median(xval*yval),
+    er = 10 * abs(rnorm(length(xval))) + 2,
+    er = round(er, 1),
+    l = yval - er,
+    h = yval + er,
+    col = yval,
+    nm = paste("point", xval)
+  )
+
+head(df)
+```
+
+```{r}
+
+hchart(df, "column", hcaes(x = xval, y = zval, color = col, name = nm)) %>% 
+  hc_add_theme(hc_theme_monokai())
+```
+```{r}
+hchart(df, "funnel", hcaes(y = yval, name = nm, color = col))
+```
+```{r}
+hchart(df, "pie", hcaes(y = yval, name = nm, color = col))
+```
+```{r}
+hchart(df, "pyramid", hcaes(y = yval, name = nm, color = col))
+```
+
