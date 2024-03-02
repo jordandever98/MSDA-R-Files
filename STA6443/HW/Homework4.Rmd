@@ -1,0 +1,343 @@
+---
+title: "Homework 4"
+author: "Jordan Dever"
+date: "2023-12-03"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+library(DescTools); library(MASS)
+library(BSDA)
+library(car)
+library(olsrr)
+library(ResourceSelection)
+library(tidyverse)
+setwd("C:/Users/jorda/OneDrive/Documents/R-Studio/STA6443/HW/")
+liver=read.csv("liver-1.csv", header=TRUE)
+```
+Exercise 1
+
+```{r}
+liver$LiverPatient = as.factor(liver$LiverPatient)
+liver_female <- liver %>% 
+  filter(Gender == 'Female')
+liver_male <- liver %>% 
+  filter(Gender == 'Male')
+str(liver_female)
+
+```
+
+
+a)
+
+```{r}
+liver_female.glm = glm(LiverPatient ~ Age + TB + DB + Alkphos + Alamine + Aspartate
+                       + TP + ALB, data=liver_female, family = binomial)
+step.AIC.female<-step(liver_female.glm, scope = list(upper=liver_female.glm),
+                  direction="both",test="Chisq", trace = F) 
+summary(step.AIC.female)
+```
+The best set of LiverPatient predictors based on AIC criteria are DB and Aspartate.
+Our final AIC is 160.27 and both DB and Aspartate are below .1 so are significant.
+
+b)
+
+```{r}
+hoslem.test(step.AIC.female$y, fitted(step.AIC.female), g=10) 
+```
+```{r}
+resid.d<-residuals(step.AIC.female, type = "deviance")
+resid.p<-residuals(step.AIC.female, type = "pearson")
+std.res.d<-residuals(step.AIC.female, type = "deviance")/sqrt(1 - hatvalues(step.AIC.female)) 
+std.res.p <-residuals(step.AIC.female, type = "pearson")/sqrt(1 - hatvalues(step.AIC.female)) 
+
+dev.new(width = 1000, height = 1000, unit = "px")
+par(mfrow=c(1,2))
+plot(std.res.d[step.AIC.female$model$LiverPatient==0], col = "red", 
+     ylim = c(-3.5,3.5), ylab = "std. deviance residuals", xlab = "ID")
+points(std.res.d[step.AIC.female$model$LiverPatient==1], col = "blue")
+
+plot(std.res.p[step.AIC.female$model$LiverPatient==0], col = "red", 
+     ylim = c(-3.5,3.5), ylab = "std. Pearson residuals", xlab = "ID")
+points(std.res.p[step.AIC.female$model$LiverPatient==1], col = "blue")
+```
+```{r}
+dev.new(width = 1000, height = 1000, unit = "px")
+plot(step.AIC.female, which = 4, id.n = 5) 
+
+(inf.id=which(cooks.distance(step.AIC.female)>0.25))
+```
+
+DB and Aspartate we both significant with our alpha level of .1. In the Hosmer-
+Lemeshow's test, we got a p-value of 0.4579 we will fail to reject the null
+and state that this model is adequate. Looking at the residual plots, we can see
+that there is no trend in both the Pearson and Deviance which is good. A minor issue
+that I see is that for the Active Liver Disease people (blue points) they have 
+a much wider spread between 0 to 1 while those who don't have Liver Disease are
+primarily around -1. The red points look like they follow homoskedasicity but I
+am unsure for the blue points. When looking at the cook's distance plot, there
+are 2 points that are greater than 0.05 but with our cut-off of 0.25, there are
+no outliers.
+
+c)
+
+```{r}
+OR.female = exp(step.AIC.female$coefficients)
+round(OR.female, 3)
+```
+For a female liver patient at an alpha level of .1, a patient with elevated
+DB and Aspartate are more likely to develop Liver Disease. With a one unit increase
+in Aspartate a person will have 1% increased risk in having liver disease (1.011)
+and a person with one unit increase in DB will have a 157% greater chance of developing
+liver disease (2.572).
+
+
+
+
+
+
+Exercise 2
+
+```{r}
+liver_male.glm = glm(LiverPatient ~ Age + TB + DB + Alkphos + Alamine + Aspartate
+                       + TP + ALB, data=liver_male, family = binomial)
+step.AIC.male<-step(liver_male.glm, scope = list(upper=liver_male.glm),
+                  direction="both",test="Chisq", trace = F) 
+summary(step.AIC.male)
+```
+The best set of male LiverPatient predictors based on AIC criteria are Age, DB,
+Alamine, TP, and ALB. Our final AIC is 404.02 and Age, DB, Alamine, TP, and ALB
+are below .1 so are significant.
+
+b)
+
+```{r}
+hoslem.test(step.AIC.male$y, fitted(step.AIC.male), g=10) 
+```
+```{r}
+resid.d<-residuals(step.AIC.male, type = "deviance")
+resid.p<-residuals(step.AIC.male, type = "pearson")
+std.res.d<-residuals(step.AIC.male, type = "deviance")/sqrt(1 - hatvalues(step.AIC.male)) 
+std.res.p <-residuals(step.AIC.male, type = "pearson")/sqrt(1 - hatvalues(step.AIC.male)) 
+
+dev.new(width = 1000, height = 1000, unit = "px")
+par(mfrow=c(1,2))
+plot(std.res.d[step.AIC.male$model$LiverPatient==0], col = "red", 
+     ylim = c(-3.5,3.5), ylab = "std. deviance residuals", xlab = "ID")
+points(std.res.d[step.AIC.male$model$LiverPatient==1], col = "blue")
+
+plot(std.res.p[step.AIC.male$model$LiverPatient==0], col = "red", 
+     ylim = c(-3.5,3.5), ylab = "std. Pearson residuals", xlab = "ID")
+points(std.res.p[step.AIC.male$model$LiverPatient==1], col = "blue")
+```
+```{r}
+dev.new(width = 1000, height = 1000, unit = "px")
+plot(step.AIC.male, which = 4, id.n = 5) 
+
+(inf.id=which(cooks.distance(step.AIC.male)>0.25))
+```
+
+Age, DB and Alamine, TP, and ALB we all significant with our alpha level of .1.
+In the Hosmer-Lemeshow's test, we got a p-value of 0.8251 we will fail to reject the null
+and state that this model is adequate. Looking at the residual plots, we can see
+that there is no trend in both the Pearson and Deviance which is good.Both groups
+look like they follow homoskedasicity but there could potentially be outliers in
+the no disease group because of 2 points being close to -3.
+When looking at the cook's distance plot, there is 1 point greater than .1 and
+1 point that is greater than 0.05 but with our cut-off of 0.25, there are
+no outliers.
+
+c)
+
+```{r}
+OR.male = exp(step.AIC.male$coefficients)
+round(OR.male, 3)
+```
+For a male liver patient at an alpha level of .1, an older patient that has 
+elavated DB, Alamine, and TP with a reduction in ALB are more likely to develop
+liver disease. For every year a person gets older, they are 2% more likely to
+develop liver disease. For every one unit increase in DB, they are 55% more likely
+to develop liver disease. For every one unit increase in Alamine, they are ~2% 
+more likely to develop liver disease. For every one unit increase in TP, they are
+52% more likely to develop liver disease. For every one unit decrease in ALB,
+they are 53% more likely to develop liver disease.
+
+d)
+The models for the male and female groups differ a lot because there are 5 
+significant variables for males while there is only 2 for females. They only
+share DB as a significant variable but for females it is a much larger determinate
+of developing liver disease than it is for men (157% vs 55%).
+
+
+
+
+
+Exercise 3
+
+```{r}
+sleep=read.csv("sleep-1.csv", header=TRUE)
+sleep4=read.csv("sleep-1.csv", header=TRUE)
+```
+
+```{r}
+sleep$predationindex = as.factor(sleep$predationindex)
+sleep$sleepexposureindex = as.factor(sleep$sleepexposureindex)
+sleep$maxlife10 = as.factor(sleep$maxlife10)
+sleep4$maxlife10 = as.factor(sleep$maxlife10)
+summary(sleep)
+```
+
+a)
+
+```{r}
+sleep.glm = glm(maxlife10 ~ .-species, data=sleep, family = binomial)
+step.AIC.sleep<-step(sleep.glm, scope = list(upper=sleep.glm),
+                  direction="both",test="Chisq", trace = F) 
+summary(step.AIC.sleep)
+```
+
+The best set of predictors based on the AIC criteria are brainweight, totalsleep,
+sleepexposureindex(2-5), and predationindex(2-5) with a final AIC of 37.88. The 
+only significant predictor is sleepexposureindex2 with a p-value of 0.508.
+
+b)
+
+```{r}
+hoslem.test(step.AIC.sleep$y, fitted(step.AIC.sleep), g=10) 
+```
+
+```{r}
+resid.d<-residuals(step.AIC.sleep, type = "deviance")
+resid.p<-residuals(step.AIC.sleep, type = "pearson")
+std.res.d<-residuals(step.AIC.sleep, type = "deviance")/sqrt(1 - hatvalues(step.AIC.sleep)) 
+std.res.p <-residuals(step.AIC.sleep, type = "pearson")/sqrt(1 - hatvalues(step.AIC.sleep)) 
+
+dev.new(width = 1000, height = 1000, unit = "px")
+par(mfrow=c(1,2))
+plot(std.res.d[step.AIC.sleep$model$maxlife10==0], col = "red", 
+     ylim = c(-3.5,3.5), ylab = "std. deviance residuals", xlab = "ID")
+points(std.res.d[step.AIC.sleep$model$maxlife10==1], col = "blue")
+
+plot(std.res.p[step.AIC.sleep$model$maxlife10==0], col = "red", 
+     ylim = c(-3.5,3.5), ylab = "std. Pearson residuals", xlab = "ID")
+points(std.res.p[step.AIC.sleep$model$maxlife10==1], col = "blue")
+```
+
+```{r}
+dev.new(width = 1000, height = 1000, unit = "px")
+plot(step.AIC.sleep, which = 4, id.n = 5) 
+```
+
+The Hosmer-Lemeshow's test tells us that we have p-value = 0.4248 so we fail to
+reject the null and state our model is adequate on goodness of fit. The residual
+plots look bad because red and blue should not be overlapping. Most of the points 
+for 10+ years are also on 0 which does not look great. There does not seem to
+be homoskedasticity because of how dispersed the red points are. Looking at the
+cook's distance if we were going to use .25 as a cut off again we would lose 
+points 35 and 40. If it was 0.05 we would possibily lose more. These points 35
+and 40 could potentially be skewing our model.
+
+c)
+
+```{r}
+OR.sleep = exp(step.AIC.sleep$coefficients)
+round(OR.sleep, 3)
+```
+Ignoring our significant level, a one unit increase in brainweight would be a 5%
+increased chance of living 10 years, for every 1 unit increase sleep there is a 
+52% increased chance of living 10 years, if they are under predationindex2 they
+are less likely to live 10+ years, if they are under predationindex3,4 or 5 there
+is no change on probability the of living longer, if they are in sleepexposureindex
+2,3,4, or 5 they have a higher chance of living 10+ years.
+
+
+
+
+Exercise 4
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+```{r}
+sleep4.glm = glm(maxlife10 ~ .-species, data=sleep4, family = binomial)
+step.AIC.sleep4<-step(sleep4.glm, scope = list(upper=sleep4.glm),
+                  direction="both",test="Chisq", trace = F) 
+summary(step.AIC.sleep4)
+```
+
+The best set of predictors based on the AIC criteria are brainweight, totalsleep,
+sleepexposureindex, and predationindex with a final AIC of 29.212 (lower than 
+exercise 3). All four of the previously mentioned terms are significant with our
+alpha level of 0.1.
+
+
+b)
+
+```{r}
+hoslem.test(step.AIC.sleep$y, fitted(step.AIC.sleep4), g=10) 
+```
+
+```{r}
+resid.d<-residuals(step.AIC.sleep4, type = "deviance")
+resid.p<-residuals(step.AIC.sleep4, type = "pearson")
+std.res.d<-residuals(step.AIC.sleep4, type = "deviance")/sqrt(1 - hatvalues(step.AIC.sleep4)) 
+std.res.p <-residuals(step.AIC.sleep4, type = "pearson")/sqrt(1 - hatvalues(step.AIC.sleep4)) 
+
+dev.new(width = 1000, height = 1000, unit = "px")
+par(mfrow=c(1,2))
+plot(std.res.d[step.AIC.sleep4$model$maxlife10==0], col = "red", 
+     ylim = c(-3.5,3.5), ylab = "std. deviance residuals", xlab = "ID")
+points(std.res.d[step.AIC.sleep4$model$maxlife10==1], col = "blue")
+
+plot(std.res.p[step.AIC.sleep4$model$maxlife10==0], col = "red", 
+     ylim = c(-3.5,3.5), ylab = "std. Pearson residuals", xlab = "ID")
+points(std.res.p[step.AIC.sleep4$model$maxlife10==1], col = "blue")
+```
+
+```{r}
+dev.new(width = 1000, height = 1000, unit = "px")
+plot(step.AIC.sleep4, which = 4, id.n = 5) 
+```
+
+The Hosmer-Lemeshow's test tells us that we have p-value = 0.9937 so we fail to
+reject the null and state our model is adequate on goodness of fit. The residual
+plots look bad because red and blue should not be overlapping. Most of the points 
+for 10+ years are also on 0 which does not look great. There does not seem to
+be homoskedasticity because of how dispersed the red points are which is the same
+problem from exercise 3. Looking at the cook's distance, this model has a lot of
+outliers. The scale on the left has changed greatly compared to exercise 3 and we
+have 4 outliers exceeding .25 and of those 4, 1 is greater than .50!
+
+c)
+
+```{r}
+OR.sleep4 = exp(step.AIC.sleep4$coefficients)
+round(OR.sleep4, 3)
+```
+With continuous index variables affecting our maximum lifespan analysis,
+a one unit increase in brainweight would lead to a 6% higher probability of
+having a longer life, a one unit increase in totalsleep would be a 43% increase
+at the chance of a longer life, a one unit increase in sleepexploreindex would
+be a 8218% increased probability of living longer, and a one unit decrease in
+predationindex would be a 97% increase in probability to live longer. Based on
+these results it seems like the sleepexposureindex and predationindex have extreme
+gaps between each level which makes sense since they are originally ordinal.
+
+

@@ -1,0 +1,136 @@
+---
+title: "Homework 3"
+author: "Jordan Dever"
+date: "2023-11-04"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+library(DescTools); library(MASS)
+library(BSDA)
+library(car)
+ library(olsrr)
+setwd("C:/Users/jorda/OneDrive/Documents/R-Studio/STA6443/HW/")
+heart=read.csv("heart.csv", header=TRUE)
+```
+EXERCISE 1
+
+```{r}
+lm.heart1 <- lm(Cholesterol~Weight, data=heart) 
+par(mfrow=c(2,2))
+plot(lm.heart1, which=c(1:4))
+cook.d1 = cooks.distance(lm.heart1)
+
+```
+
+```{r}
+inf.id1 = which(cooks.distance(lm.heart1)>0.015)
+heart[inf.id1, ]
+lm.heart2=lm(Cholesterol~Weight, data=heart[-inf.id1, ])
+par(mfrow=c(2,2))
+plot(lm.heart2, which=c(1:4))
+summary(lm.heart2)
+```
+In our refit model, we find that our model is useful because the weight p-value is
+8.155e-06 and is < 0.05 meaning at least one beta is not zero. We also reject the
+null for weight and state that there is a linear relationship between weight and
+cholesterol because 8.16e-06 < 0.05. On average, cholesterol is predicted to have
+a 0.12264 increase for every one unit increase in weight. Only 0.6% of the variation
+can be explained by our model, so this model is not good for predicting cholesterol
+levels.
+It also looks like our model follows the normality and equal variance assumptions.
+
+
+
+
+
+EXERCISE 2
+
+```{r}
+lm.heart3 = lm(Cholesterol ~ Diastolic + Systolic + Weight, data=heart) 
+par(mfrow=c(2,2))
+plot(lm.heart3, which=c(1:4))
+```
+Looking at the diagnostics plot, it looks like the model follows the normal
+assumption and has equal variance. In the Cook's Distance there is 3 possible
+influential points that need to checked for our cut off of 0.015.
+
+```{r}
+inf.id2 = which(cooks.distance(lm.heart3)>0.015)
+lm.heart4=lm(Cholesterol~Diastolic + Systolic + Weight, data=heart[-inf.id2, ])
+par(mfrow=c(2,2))
+plot(lm.heart4, which=c(1:4))
+summary(lm.heart4)
+vif(lm.heart4)
+```
+Since our p-value:< 2.2e-16 and reject the null then state our model has at least
+one non-zero beta which means there is a linear relationship between some x's and y
+(model is useful). We then have 2 significant individual terms, 
+diastolic (0.0195) and systolic (2.2e-06), they have a linear relationship with y.
+Using VIF, there was no evidence of multicollinearity issues among predictors since
+all were under 10 (1.12 to 2.55). About ~3.8% of the variance in cholesterol can 
+be explained by our model, so this is still not a great model for predicting
+cholesterol levels for patients.
+
+
+
+
+EXERCISE 3
+
+```{r}
+inf.id3 = which(cooks.distance(lm.heart4)>0.015)
+lm.heart5=lm(Cholesterol~Diastolic + Systolic + Weight, data=heart[-inf.id2, ])
+heart5.stepwise<-ols_step_both_p(lm.heart5, pent = 0.05, prem = 0.05, details = FALSE)
+heart5.stepwise
+```
+```{r}
+lm.heartstep1 = lm(Cholesterol~Diastolic + Systolic, data = heart)
+par(mfrow=c(2,2))
+plot(lm.heartstep1, which=c(1:4))
+summary(lm.heartstep1)
+```
+There seems to be no issues in the diagnostics plots.
+Our p-value:< 2.2e-16 so we reject the null and state that this model has at least
+one non-zero beta and is useful. Both diastolic (.00932) and systolic (2.89e-06)
+are < 0.05, so they have a linear relationship with y. We can explain ~3.6% of
+the variance in cholesterol which is more explained variance than Exercise 1,
+but is almost the same explained variance of Exercise 2. It likely went down 
+because we removed 1 variable from our model.
+
+
+
+EXERCISE 4
+
+```{r}
+heart.best.subset<-ols_step_best_subset(lm.heart4) 
+heart.best.subset
+```
+a) The best model based on adjusted-R squared is Model 3: Diastolic, Systolic, 
+and Weight with a value of 0.0367, but model 2 is 0.0365 (0.0002 less).
+R-Square    Adj. R-Square        AIC 
+0.0377      0.0367            32345.0829
+
+b) The best model based on AIC is Model 2: Diastolic, Systolic with a 32344.7321
+which is the lowest of the 3 models.
+R-Square    Adj. R-Square        AIC 
+0.0372      0.0365            32344.7321
+
+c) The final model from a) is the model from Exercise 2 (stepwise) while b) is 
+from Exercise 3. Both models were significant and gave the same significant terms.
+Model 3 had the lowest AIC, while Model 2 had a higher adjusted-R squared and 
+the smallest Mallow's Cp. Although for the Exercise 2 (b) model there was 
+slightly more explained variance, that is likely due to there being more 1 term 
+and R-squared increases the more terms we add to our model. When we account for
+this using adjusted-R squared, the explained variance is only different by 0.02%.
+The best subset approach based on AIC ended up giving us the same final model as
+the stepwise selection final model since both models only used Diastolic and Systolic.
+In the end, none of the final models would be great models to explain to the
+medical director on predicting cholesterol outcomes because we would want to be
+able to explain ~20% of the variance at least.
+
+

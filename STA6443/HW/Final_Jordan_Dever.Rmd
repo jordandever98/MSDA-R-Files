@@ -1,0 +1,266 @@
+---
+title: "Final Programming"
+author: "Jordan Dever"
+date: "2023-12-07"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(DescTools); library(MASS)
+library(BSDA)
+library(car)
+library(olsrr)
+library(ResourceSelection)
+library(tidyverse)
+setwd("C:/Users/jorda/OneDrive/Documents/R-Studio/STA6443/HW/")
+bw=read.csv("birthweight_final.csv", header=TRUE)
+```
+
+```{r}
+bw$Weight_Gr = as.factor(bw$Weight_Gr)
+bw$Black = as.factor(bw$Black)
+bw$Married = as.factor(bw$Married)
+bw$Boy = as.factor(bw$Boy)
+bw$MomSmoke = as.factor(bw$MomSmoke)
+bw$Ed = as.factor(bw$Ed)
+
+```
+
+EXERCISE 1
+
+(1)#############################################################################
+
+```{r}
+lm.bw=lm(Weight~ . -Weight_Gr, data=bw)
+```
+
+Stepwise
+```{r}
+bw.stepwise<-ols_step_both_p(lm.bw, pent = 0.01, prem = 0.01, details = FALSE)
+bw.stepwise
+```
+
+Forward
+```{r}
+bw.forward<-ols_step_forward_p(lm.bw, penter = 0.01, details = F)
+bw.forward
+```
+
+Backward
+```{r}
+bw.backward<-ols_step_backward_p(lm.bw, prem = 0.01, details = F) 
+bw.backward 
+```
+Backward selection kept: Black,MomSmoke,MomWtGain
+R-squared
+```{r}
+bw.best.subset<-ols_step_best_subset(lm.bw) 
+bw.best.subset
+```
+Best model on highest adj R is 'Model 6: Black Married Boy MomSmoke Ed MomWtGain'
+where adj r = 0.1314.
+
+
+
+Stepwise: MomWtGain, MomSmoke, Black
+Forward:  MomWtGain, MomSmoke, Black
+Backward:  Black,MomSmoke,MomWtGain (Same as above)
+Adj R: Black Married Boy MomSmoke Ed MomWtGain
+
+All of the step based model selection methods had the three same exact variables
+of MomWtGain, MomSmoke, Black at a discrimination p-value of 0.01. The only model
+that was different was the adjusted R squared model because the highest observed
+R squared came from a model that included Married, Boy, and Ed. I think the
+step based models all having 3 variables could be due to the fact that we used
+a p-value of 0.01 rather than 0.05 while we are only looking for the highest
+adjusted R squared and the extra variables could potentially significant at a 
+slightly higher p-value cut off.
+
+
+(2)#############################################################################
+
+```{r}
+lm.bw.step = lm(Weight ~ MomWtGain + MomSmoke + Black, data= bw)
+inf.id = which(cooks.distance(lm.bw.step)>0.115)
+lm.bw.step = lm(Weight ~ MomWtGain + MomSmoke + Black, data= bw[-inf.id,])
+par(mfrow=c(2,2))
+plot(lm.bw.step, which=c(1:4))
+summary(lm.bw.step)
+```
+After removing outliers, Black1 had a p-value of 0.01133 so I will remove it
+from the final model.
+
+```{r}
+lm.bw.final = lm(Weight ~ MomWtGain + MomSmoke, data= bw[-inf.id,])
+par(mfrow=c(2,2))
+plot(lm.bw.final, which=c(1:4))
+summary(lm.bw.final)
+```
+Looking at the diagnostics plots, it looks like the final model mostly follows
+a normal distribution. There are a few points that trail off between the -3 to -2
+quantiles in the QQ plot. The points look randomly distributed and follow
+homoscedascity with the exception of a few points. After removing the outlier 
+from the cook's distance, we are left with 399 total observations and only
+two variables since Black was 0.01133 after removing the outlier.
+
+(3)
+
+The final model has an Adjusted R-squared of 0.1181 which means that 11.81% of
+the variance in weight is explained by our model.
+
+(4)
+
+With a p-value of 5.816e-12, our final model is considered useful because at least
+one beta is not zero. We can interpret the predictors as for every one unit 
+increase in MomWtGain (p=5.57e-11), then the baby's birth weight is expected to 
+increase by 14.1 grams (when MomSmoke is constant). If a mother smokes (p=0.00382), 
+then the baby's birth weight is expected to decrease by 222.646 grams.
+
+If MomSmokes
+Weight = (3402.041-222.646) + 14.1(MomWtGain Value)
+
+If Mom Doesn't Smoke
+Weight = 3402.041 + 14.1(MomWtGain Value)
+
+
+
+
+EXERCISE 2#######################################################################
+
+(1)
+
+```{r}
+glm.bw = glm(Weight_Gr ~ . -Weight, data = bw, family = 'binomial')
+model.null.AIC = glm(Weight_Gr ~ 1, data=bw, family = binomial)
+step.bw.AIC<-step(model.null.AIC, scope = list(upper=glm.bw), 
+                  direction="both",test="Chisq", trace = F)
+summary(step.bw.AIC)
+```
+
+```{r}
+model.null.BIC = glm(Weight_Gr ~ 1, data=bw, family = binomial)
+step.bw.BIC<-step(model.null.BIC, scope = list(upper=glm.bw),
+                  direction="both",test="Chisq", trace = F, k=log(nrow(bw)))
+summary(step.bw.BIC)
+```
+
+AIC: Boy, MomSmoke, Ed, MomAge, MomWtGain
+BIC: MomSmoke, MomAge, MomWtGain
+
+Using a p-value of 0.05:
+Both AIC and BIC both have MomSmoke, MomAge, and MomWtGain as contributing factors
+toward predicting Weight_Gr while only the AIC selection included Boy and Ed as
+other factors but both are insignificant. Both Ed and Boy have a p-value greater 
+than 0.05, and MomAge is greater than 0.01 in AIC. In BIC, all p-values are lower
+than 0.01 which is the cut off from our previous exercise.
+
+(2)
+
+```{r}
+dev.new(width = 1000, height = 1000, unit = "px")
+(inf.id=which(cooks.distance(step.bw.BIC)>0.1))
+plot(step.bw.BIC, which = 4, id.n = 5) 
+```
+
+```{r}
+resid.d<-residuals(step.bw.BIC, type = "deviance")
+resid.p<-residuals(step.bw.BIC, type = "pearson")
+std.res.d<-residuals(step.bw.BIC, type = "deviance")/sqrt(1 - hatvalues(step.bw.BIC)) 
+std.res.p <-residuals(step.bw.BIC, type = "pearson")/sqrt(1 - hatvalues(step.bw.BIC)) 
+
+dev.new(width = 1000, height = 1000, unit = "px")
+par(mfrow=c(1,2))
+plot(std.res.d[step.bw.BIC$model$Weight_Gr==0], col = "red", 
+     ylim = c(-3.5,3.5), ylab = "std. deviance residuals", xlab = "ID")
+points(std.res.d[step.bw.BIC$model$Weight_Gr==1], col = "blue")
+
+plot(std.res.p[step.bw.BIC$model$Weight_Gr==0], col = "red", 
+     ylim = c(-3.5,3.5), ylab = "std. Pearson residuals", xlab = "ID")
+points(std.res.p[step.bw.BIC$model$Weight_Gr==1], col = "blue")
+```
+
+There were no observations with a Cook's distance larger than the 0.1 cut off, 
+so we will use all 400 observations in the model. The distributions look to
+have no trends and follow homoskedasticity.
+
+(3)
+
+```{r}
+OR.bw = exp(step.bw.BIC$coefficients)
+round(OR.bw, 3)
+```
+The estimate of the odds ratio for MomSmoke1 is 2.377 so the odds for a baby
+having low birth weight is 2.377 times the odds for MomSmoke0. The odds ratio
+for MomAge is 0.953 so with a one unit increase in MomAge we would expect the odds
+of a low birth weight to change by 0.953. The odds ratio for MomWtGain is
+0.964 so with a 1 unit increase in MomWtGain we would expect a change in
+low birth weight odds by 0.964.
+
+(4)
+
+Based on our final model, an older woman who smokes and gained a lot of weight
+during her pregnancy has higher odds in delivering a low birth weight
+infant.
+
+(5)
+
+
+```{r}
+bw2=read.csv("birthweight_final.csv", header=TRUE)
+bw.fit.prob <- predict(step.bw.BIC, type = "response")
+(bw.sample.prop=mean(bw2$Weight_Gr)) # sample proportion 
+
+```
+0.4925 is our sample proportion of low birth weight infants.
+
+(6)
+
+```{r}
+bw.pred.class <- ifelse(bw.fit.prob > bw.sample.prop, 1, 0) 
+cbind(bw[c("MomSmoke", "MomAge", "MomWtGain", "Weight_Gr")], bw.fit.prob, bw.pred.class)
+```
+
+```{r}
+mean(bw2$Weight_Gr != bw.pred.class)
+```
+There is a misclassification rate of 0.355 (35.5%) with our sample proportion
+cut off of 0.4925.
+
+(7)
+
+```{r}
+hoslem.test(step.bw.BIC$y, fitted(step.bw.BIC), g=10) 
+```
+Our p-value for the Hosmer & Lemeshow GOF test is 0.3252. This means we can 
+fail to reject the null and state that our model is adequate and our model 
+fits the data well.
+
+
+
+EXERCISE 3#######################################################################
+
+Looking at the results for exercises 1 and 2, we can see that a mother smoking
+is definitely a risk factor in reducing infant birth weight. In the linear
+regression, mother weight gain during pregnancy played a small role in increasing
+infant birth weight (~14 for every one unit increase) while in the logistic
+regression model it was determined that women who gained during pregnancy had a 
+higher odds of lower birth weight. Mother age also played a minor role in
+the logistic regression model. I think what this tells us for both models is that
+if a mother smokes (-222 lm, and 2.377 OR in glm) the baby much more likely to
+be born with a lower birth weight on average. Comparing the two models for mother
+weight gain it is possible that more data than 400 observations could be required
+to draw effective conclusions, or there is a threshold on ideal mom weight gain.
+
+If we wanted to implement a low-birthweight prevention program, we would suggest
+that pregnant women DO NOT smoke for the health of their baby. We would also
+suggest that is it likely healthier for the baby if the mother is younger and is
+conscious of their weight gain during pregnancy. Its OK for moms to gain weight
+it just could possibly become a negative at a certain point.
+
+
+
+
