@@ -1,0 +1,162 @@
+---
+title: "assignment 2"
+format: html
+editor: visual
+---
+
+## Quarto
+
+Quarto enables you to weave together content and executable code into a finished document. To learn more about Quarto see <https://quarto.org>.
+
+## Running Code
+
+When you click the **Render** button a document will be generated that includes both content and the output of embedded code. You can embed code like this:
+
+```{r}
+library(tidyverse)
+library(car)
+library(broom)
+library(DescTools)
+library(ROCR)
+library(lmtest)
+library(dplyr)
+library(naniar)
+library(MASS)
+library(e1071)
+library(readxl)
+library(ggplot2)
+```
+
+You can add options to executable code like this
+
+```{r}
+#| echo: false
+priv <- read_excel("C:/Users/jorda//Downloads/privacy 1.xlsx")
+
+priv$commodity = as.factor(priv$commodity)
+priv$like_know = as.factor(priv$like_know)
+priv$classic_coke = as.factor(priv$classic_coke)
+priv$gender = as.factor(priv$gender)
+```
+
+The `echo: false` option disables the printing of code (only output is displayed).
+
+```{r}
+priv = na.omit(priv)
+```
+
+```{r}
+ggplot(priv, aes(x = commodity)) +
+  geom_bar(fill = "skyblue")+  # Bar graph with blue bars
+  labs(title = "Willingness to Provide Personal Data", x = "Agreeable Scale", y = "Frequency")
+```
+
+```{r}
+ggplot(priv, aes(x = like_know)) +
+  geom_bar(fill = "limegreen")+  # Bar graph with blue bars
+  labs(title = "Like to know how data is being used", x = "Agreeable Scale", y = "Frequency")
+```
+
+```{r}
+unique(is.na(priv))
+```
+
+```{r}
+# Example contingency table (replace with your data)
+contingency_table <- table(priv$gender, priv$commodity)
+
+# Perform Chi-square test
+chi_sq_test <- chisq.test(contingency_table)
+
+# Print results
+print(chi_sq_test)
+
+```
+
+```{r}
+# Convert contingency table to data frame
+df_contingency <- as.data.frame.matrix(contingency_table)
+
+
+
+# Create a clustered bar chart
+ggplot(priv, aes(x = commodity) +
+  geom_bar( fill = gender, color=gender, stat = "identity", position = position_dodge()) +
+  labs(title = "Clustered Bar Chart of Gender vs. Agreeability Scale",
+       x = "Gender", y = "Frequency")
+
+```
+
+```{r}
+willing_t_test < glm(gender~commodity,data=priv)
+willing_t_test
+```
+
+```{r}
+summary(willing_t_test)
+```
+
+```{r}
+ggplot(priv, aes(x = commodity, fill = gender)) +
+  geom_bar(position = "dodge") + 
+  labs(title = "Does Gender Change How People Feel About Personal Data?",
+       x = "Agreeable Scale",
+       y = "Frequency") +
+  scale_fill_manual(values = c("pink", "skyblue"))  
+
+```
+
+```{r}
+priv$commodity = as.numeric(priv$commodity)
+t.test(commodity~gender, data = priv)
+```
+
+
+
+
+```{r}
+# Perform Chi-square test
+chi_sq_test <- chisq.test(contingency_table)
+
+# Get observed counts from the contingency table
+observed_counts <- contingency_table
+
+# Calculate expected counts
+expected_counts <- chi_sq_test$expected
+
+# Compute standardized residuals
+standardized_residuals <- (observed_counts - expected_counts) / sqrt(expected_counts)
+
+# Examine standardized residuals
+print(standardized_residuals)
+
+```
+
+```{r}
+priv$gender = as.factor(priv$gender)
+count(priv, gender)
+```
+
+```{r}
+chisq.test(table(priv$like_know, priv$classic_coke))
+```
+
+```{r}
+chisq.test(table(priv$commodity, priv$gender))
+```
+
+```{r}
+ggplot(priv, aes(x = like_know, fill = classic_coke)) +
+  geom_bar(position = "dodge") + 
+  labs(title = "Does drinking Coke change how people feel \n about knowing how their data is used?",
+       x = "Agreeable Scale",
+       y = "Frequency") +
+  scale_fill_manual(values = c("grey", "#F40009"))  
+```
+
+
+```{r}
+priv$like_know = as.numeric(priv$like_know)
+t.test(like_know~classic_coke, data = priv)
+```
+

@@ -1,0 +1,298 @@
+---
+title: "Assignment 1"
+author: "Jordan Dever"
+date: "2024-03-01"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+college <- read_csv("~/R-Studio/Predictive Modeling/ALL CSV FILES - 2nd Edition/College.csv")
+```
+
+#2.
+Regression, Inference, n = 500 , p = 3
+Classification, Prediction, n =20, p = 13
+Regression, Prediction, n = 52, p = 3
+
+
+#5.
+A very flexible approach can be disadvantageous when the model overfits to the training data, then leads to a reduced Test MSE. It can be advantageous to not have a strict shape over the data so we can reduce the bias in our model, but our variance will increase. A less flexible approach may be preferred if we want to make inferences on our data and understand the relationship between X and Y. Less flexible approaches are also less complex and easier to describe compared to very flexible models. 
+
+#6.
+In terms of statistics, parametric models usually follow the assumptions of the model while non-parametric models violate some assumptions of its parametric counterpart in order to get as close to f without being too wiggly.
+Parametric: Parametric models are much more structured and follow defined shapes that aren’t very flexible. Do not require as many observations to create a parametric model. Parametric models also have reduced computation time.
+Non-Parametric: Non-parametric models are very flexible and have a better potential to fit the shape of f due to having a wider range of shapes. A large disadvantage of non-parametric measures is that they require much more observations in order to make an accurate estimate of f.
+
+-------------------------------------------------------------------------------------------------------
+#8. 
+b)
+```{r}
+View(college)
+summary(college)
+```
+
+c)
+```{r}
+pairs(college[ ,3:13])
+```
+
+```{r}
+college$Private = as.factor(college$Private)
+plot(college$Private, college$Outstate)
+```
+
+
+```{r}
+Elite=rep("No",nrow(college))
+Elite[college$Top10perc >50]="Yes"
+Elite=as.factor(Elite)
+college=data.frame(college, Elite)
+
+summary(college$Elite)
+```
+
+```{r}
+plot(college$Elite, college$Outstate)
+```
+
+```{r}
+par(mfrow = c(2, 2))
+hist(college$Apps)
+hist(college$Grad.Rate)
+hist(college$S.F.Ratio)
+hist(college$Expend)
+```
+```{r}
+college_glm = glm(Private ~.-...1, data = college, family = binomial)
+summary(college_glm)
+```
+
+I ran a logistic regression on all the variables being a function of Private
+and I found that F. Undergrad, Outstate, PhD,perc.alumni, and EliteYes are
+all significant predictors, at an alpha level of 0.05, for a university being
+Private.
+
+```{r}
+college_glm = glm(Private ~  `F.Undergrad` + Outstate + PhD 
+                  +  `perc.alumni` + Elite, data = college, family = binomial)
+summary(college_glm)
+```
+When running only those significant predictors, Elite no longer becomes significant
+in predicting Private.
+
+#9.
+a)
+```{r}
+auto = read_csv("~/R-Studio/Predictive Modeling/ALL CSV FILES - 2nd Edition/Auto.csv")
+auto = na.omit(auto)
+summary(auto)
+```
+Everything is numeric EXCEPT horsepower and name according to the summary. I will
+change horsepower into numeric because that does not seem correct.
+```{r}
+auto$horsepower = as.numeric(auto$horsepower)
+auto = na.omit(auto)
+summary(auto)
+```
+NA's were introduced when switching horsepower to numeric but have been removed.
+Now only 'name' should be the character and everything else numeric.
+
+b)
+Range of auto
+```{r}
+sapply(auto[, 1:7], range)
+#mpg cylinders displacement horsepower weight acceleration year
+#[1,]  9.0         3           68         46   1613          8.0   70
+#[2,] 46.6         8          455        230   5140         24.8   82
+
+
+```
+c)
+Mean of auto
+```{r}
+sapply(auto[, 1:7], mean)
+#mpg    cylinders displacement   horsepower       weight acceleration         year 
+#23.445918     5.471939   194.411990   104.469388  2977.584184    15.541327    75.979592 
+```
+
+Standard Deviation of auto
+```{r}
+sapply(auto[, 1:7], sd)
+#mpg    cylinders displacement   horsepower       weight acceleration         year 
+#7.805007     1.705783   104.644004    38.491160   849.402560     2.758864     3.683737 
+```
+
+d)
+Subsample Range
+```{r}
+auto2 <- auto[-c(10:85), ]
+sapply(auto2[, 1:7], range)
+#mpg cylinders displacement horsepower weight acceleration year
+#[1,] 11.0         3           68         46   1649          8.5   70
+#[2,] 46.6         8          455        230   4997         24.8   82
+
+```
+Subsample Mean
+```{r}
+sapply(auto2[, 1:7], mean)
+#mpg    cylinders displacement   horsepower       weight acceleration         year 
+#24.404430     5.373418   187.240506   100.721519  2935.971519    15.726899    77.145570 
+
+```
+Subsample Standard Deviation
+```{r}
+sapply(auto2[, 1:7], sd)
+#mpg    cylinders displacement   horsepower       weight acceleration         year 
+#7.867283     1.654179    99.678367    35.708853   811.300208     2.693721     3.106217 
+```
+e)
+```{r}
+pairs(auto[ ,1:8])
+```
+
+
+```{r}
+par(mfrow = c(1, 1))
+plot(auto$weight, auto$acceleration)
+
+```
+Slight correlation that as weight increases, acceleration decreases
+
+```{r}
+plot(auto$weight, auto$mpg)
+
+```
+Collelation that as weight increases, miles per gallon decreases
+
+f)
+Yes, weight seems to be a good predictor on mpg because there is a downward trend in mpg
+especially from 3500+ in weight, the mpg goes from ~20 to ~10.
+We can also make a model to see if this is true
+```{r}
+auto_lm = lm(mpg~weight, data = auto)
+summary(auto_lm)
+```
+Weight is a significant predictor based on this linear model.
+
+#10.
+a)
+```{r}
+#install.packages("ISLR2")
+library(ISLR2)
+boston = ISLR2::Boston
+dim(boston)
+?ISLR2::Boston
+```
+506 rows, 13 columns which means 506 suburbs of Boston listed with 13 variables
+to help predict housing value in the suburbs. The explaination of each column can
+be found in the help function that was called, while each row is a suburb of Boston.
+
+b)
+```{r}
+pairs(boston)
+```
+
+There is a lot going on in the pairwise scatterplots but some plots that look to be correlated at first glance: zn & crim, indus & nox, lstat & medv, rad & tax and possibily more just hard to see with mark I eyeballs
+
+```{r}
+par(mfrow = c(2, 2))
+plot(boston$tax, boston$crim)
+plot(boston$ptratio, boston$crim)
+plot(boston$medv, boston$crim)
+plot(boston$rm, boston$crim)
+```
+ It seems that more crime occurs in the higher tax range (~650 to be specific)
+ More crime seems to occur when the pupil-teacher ratio is ~20.
+ Most crime occurs in the lower median value range of around ~10000
+ More crime around 4-6 room houses.
+ 
+c) 
+```{r}
+boston_lm = lm(crim ~., data = boston)
+summary(boston_lm)
+```
+Using a linear model to find significant predictors of crim (alpha = 0.05), 
+significant predictors were zn, dis, rad, and medv. Positive predictors were
+zn and rad while dis and medv were negative predictors of crime per capita.
+This tells us that as zn and rad increase then crime is likely to increase as
+well. If dis and medv were to increase then crime is likely to decrease. Based
+on these four variables alone, a suburb that would experience a lot of crime would
+have higher zn and rad while having lower dis and medv.
+
+d)
+```{r}
+par(mfrow=c(1,1))
+
+hist(boston$crim,breaks=50)
+```
+ 
+```{r}
+range(boston$crim)
+```
+Most places have low crime, but the value trails all the way up to ~88 per capita 
+crime rate by town
+
+```{r}
+hist(boston$tax)
+range(boston$tax)
+
+```
+Most places have a tax range between ~200-400, there there is a cap from 400-600, 
+then a big jump in frequency occurs at the 700 tax range
+
+```{r}
+hist(boston$ptratio)
+range(boston$ptratio)
+
+```
+ There is a very high frequency on the ~20 pupil-teacher ratio which could be 
+ influencing our prior look at crime vs ptratio in b.
+ 
+ e)
+```{r}
+dim(subset(Boston, chas == 1))
+# 35 bound the Charles River
+```
+ 35 bound the Charles River
+ 
+ f)
+ 
+```{r}
+median(Boston$ptratio)
+#19.05
+```
+ 
+19.05 median pupil-teacher ratio
+
+g)
+```{r}
+boston[boston$medv == min(boston$medv), ]
+summary(boston)
+# Compared to our ranges, crime is in the 3rd quartile, indus is in 3rd quartile,
+# nox is in the 3rd quartile, rm is below the first quartile, age is max, 
+# dis is below 1st quartile, rad is max, tax is in the 3rd quartile, ptratio is in the 3rd quartile
+# and lstat is in the 3rd quartile.
+```
+Compared to our ranges, crime is in the 3rd quartile, indus is in 3rd quartile,
+nox is in the 3rd quartile, rm is below the first quartile, age is max, 
+dis is below 1st quartile, rad is max, tax is in the 3rd quartile, ptratio is 
+in the 3rd quartile and lstat is in the 3rd quartile.
+
+h)
+```{r}
+dim(subset(boston, rm > 7))
+dim(subset(boston, rm > 8))
+# 64 houses with 7+ rooms, and 13 with 8+ rooms.
+```
+64 houses with 7+ rooms, and 13 with 8+ rooms.
+
+```{r}
+summary((subset(boston, rm > 8)))
+# Crime is very low with 75% of 8 room homes being less than 1 per capita crime rate
+# and the median home value is between 21-50, with a mean of 44!
+```
+
+Crime is very low with 75% of 8 room homes being less than 1 per capita crime rate
+and the median home value is between 21-50, with a mean of 44!

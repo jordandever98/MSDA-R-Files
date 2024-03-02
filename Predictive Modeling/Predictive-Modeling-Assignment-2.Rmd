@@ -1,0 +1,208 @@
+---
+title: "Predictive Modeling Assignment 2"
+author: "Jordan Dever"
+date: "2024-02-22"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(car)
+library(broom)
+library(DescTools)
+library(ROCR)
+library(lmtest)
+library(dplyr)
+library(naniar)
+library(MASS)
+library(e1071)
+library(readxl)
+library(olsrr)
+```
+
+
+## 2. Carefully explain the differences between the KNN classifier and KNN regression methods.
+One difference between KNN classifier and KNN regression is that in KNN 
+classifier, is that KNN regression would be used in situations where our target
+variable is numeric / continuous where y is any number and we would use KNN 
+classifier if our target is categorical / discrete because our y output is 0 or 1.
+KNN regression takes K and the prediction point to find the nearest training
+points near the prediction point, then tries to predict using the average of the
+nearest neighbors. KNN classifier takes the points near the prediction point in 
+the training data and estimates the conditional probability of the class. KNN
+classifier will then classify a test point to whichever class it had the highest
+probability for.
+
+
+## 9. This question involves the use of multiple linear regression on the Auto data set.
+```{r}
+auto <- read.csv("~/R-Studio/Predictive Modeling/ALL CSV FILES - 2nd Edition/Auto.csv")
+```
+
+
+ (a) Produce a scatterplot matrix which includes all of the variables in the data set.
+```{r}
+plot(auto)
+```
+ 
+ (b) Compute the matrix of correlations between the variables using the function cor(). You will need to exclude the name variable, cor() which is qualitative.
+```{r}
+auto_no_name = auto %>% 
+  dplyr::select(-name)
+auto_no_name$horsepower = as.numeric(auto_no_name$horsepower)
+cor(auto_no_name)
+```
+```{r}
+is.na(auto_no_name$horsepower)
+#counted as ? in original data
+```
+ 
+ 
+(c) Use the lm() function to perform a multiple linear regression with mpg as the response and all other variables except name as the predictors. Use the summary() function to print the results. Comment on the output. For instance: i. Is there a relationship between the predictors and the response? ii. Which predictors appear to have a statistically significant relationship to the response? iii. What does the coefficient for the year variable suggest? 
+
+```{r}
+auto_lm = lm(mpg ~ ., data = auto_no_name)
+summary(auto_lm)
+```
+Given our p-value of 2.2e-16, we can reject the null and state that at least one
+predictor is significant on mpg (assuming alpha level of 0.05). Displacement,
+weight, year, and origin are our significant predictors. The coefficient for year
+is 0.750773, so assuming all other variables are held constant, this means that 
+a one unit increase in year leads to a 0.75 increase in mpg.
+
+
+(d) Use the plot() function to produce diagnostic plots of the linear regression ft. Comment on any problems you see with the ft. Do the residual plots suggest any unusually large outliers? Does the leverage plot identify any observations with unusually high leverage?
+```{r}
+par(mfrow=c(2,2))
+plot(auto_lm)
+```
+Our linear model looks to possibly be not normal because there a lot of points
+on the top end that do not follow the normal curve, along with it not following
+homoskedasticity / not equal variance because in our residuals vs fitted plot
+the points begin spreading out like < when they should be equidistant and not
+have a pattern. Looking at our Cook's distance there is no point's that go past
+the 0.5 threshold so there seems to be no influential points.
+
+(e) Use the * and : symbols to fit linear regression models with interaction effects. Do any interactions appear to be statistically significant? 
+```{r}
+auto_lm_int = lm(mpg~.*. , data = auto_no_name)
+summary(auto_lm_int)
+```
+Using an alpha level of 0.05, the following interactions are significant:
+displacement:year,acceleration:year, and acceleration:origin.
+
+
+(f) Try a few different transformations of the variables, such as log(X), √ X, X2. Comment on your findings
+```{r}
+auto_lm_trans = lm(mpg~log(horsepower)+horsepower, data=auto_no_name)
+summary(auto_lm_trans)
+```
+```{r}
+par(mfrow=c(2,2))
+plot(auto_lm_trans)
+```
+Previously, horsepower was not significant when including all variables of the
+model but now it became significant with the transformation. It also seems to 
+follow normality and equal variance more than the entire model.
+
+## 10.
+```{r}
+carsets <- read.csv("~/R-Studio/Predictive Modeling/ALL CSV FILES - 2nd Edition/Carseats.csv")
+```
+
+(a) Fit a multiple regression model to predict Sales using Price, Urban, and US. 
+```{r}
+carseats_lm = lm(Sales ~ Price + Urban + US, data = carsets)
+summary(carseats_lm)
+```
+
+(b) Provide an interpretation of each coefficient in the model. Be careful—some of the variables in the model are qualitative! 
+Price(p<0.05): With all other variables held constant, a one unit increase in price is
+a loss of 0.054459 sales.
+Urban(p>0.05): Urban is not a significant predictor of Sales since p=0.936, so 
+there is no evidence that a store being Urban would affect sales.
+<s>With all other variables held constant, if a store is in an urban area,
+then there is a loss of 0.021916 sales. </s>
+US(p<0.05): With all other variables held constant, if a store is in the US, then there
+is a 1.200573 increase in sales.
+
+(c) Write out the model in equation form, being careful to handle the qualitative variables properly. 3.7 Exercises 125
+
+Sales = 13.043469 - 0.054459 * (Price) - 0.021916 * (Urban) + 1.200573 * (US)
+Urban and US can be 0 or 1 to nullify their part of the equation.
+
+(d) For which of the predictors can you reject the null hypothesis H0 : βj = 0? 
+
+Price and US, assuming 0.05
+
+(e) On the basis of your response to the previous question, fit a smaller model that only uses the predictors for which there is evidence of association with the outcome. 
+
+```{r}
+carseat_e = lm(Sales ~ Price + US, data = carsets)
+summary(carseat_e)
+```
+
+
+(f) How well do the models in (a) and (e) fit the data? 
+
+Using Adjusted R-squared, Model A is 0.2335 and Model E is 0.2354. This means 
+that both models can explain ~23% of variance but Model E has a better F
+statistic at 62.43 which is ~20 higher than Model A.
+
+(g) Using the model from (e), obtain 95 % confidence intervals for the coefficient(s). 
+```{r}
+confint(carseat_e)
+```
+There is a 95% chance that the values of price fall between (-0.06475984,
+-0.04419543) and ( 0.69151957,  1.70776632) for US and a 5% chance it does not.
+
+(h) Is there evidence of outliers or high leverage observations in the model from (e)?
+
+```{r}
+par(mfrow=c(2,2))
+plot(carseat_e)
+```
+Looks like there are no high leverage observations in the Residuals vs Leverage
+plot.
+
+## 12.This problem involves simple linear regression without an intercept. 
+(a) Recall that the coefficient estimate βˆ for the linear regression of Y onto X without an intercept is given by (3.38). Under what circumstance is the coefficient estimate for the regression of X onto Y the same as the coefficient estimate for the regression of Y onto X? 
+
+When the coefficient is 1 they should be the same?
+
+(b) Generate an example in R with n = 100 observations in which the coefficient estimate for the regression of X onto Y is different from the coefficient estimate for the regression of Y onto X.
+
+```{r}
+x = rnorm(100)
+y = 0.42*x + rnorm(100)
+q12_a = lm(y~x)
+q12_b = lm(x~y)
+summary(q12_a)
+summary(q12_b)
+```
+```{r}
+coefficients(q12_a)
+coefficients(q12_b)
+```
+They are different
+
+(c) Generate an example in R with n = 100 observations in which the coefficient estimate for the regression of X onto Y is the same as the coefficient estimate for the regression of Y onto X
+
+```{r}
+x = rnorm(100)
+y = x 
+q12_c = lm(y~x)
+q12_d = lm(x~y)
+summary(q12_c)
+summary(q12_d)
+```
+
+```{r}
+coefficients(q12_c)
+coefficients(q12_d)
+```
+
+Now they are the same / perfect fit.

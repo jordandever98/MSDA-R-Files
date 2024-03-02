@@ -1,0 +1,399 @@
+---
+title: "Assignment 3"
+author: "Jordan Dever"
+date: "2024-02-26"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+library(car)
+library(broom)
+library(DescTools)
+library(ROCR)
+library(lmtest)
+library(dplyr)
+library(naniar)
+library(MASS)
+library(e1071)
+library(readxl)
+library(olsrr)
+library(ISLR2)
+library(class)
+```
+
+## 13.
+a)
+```{r}
+weekly = ISLR2::Weekly
+```
+Loading data from ISLR2 package, then producing some numerical and
+graphical summaries of the data.
+
+```{r}
+summary(weekly)
+```
+
+```{r}
+str(weekly)
+```
+
+```{r}
+weekly_corr = weekly %>% 
+  dplyr::select(-Direction) #removing direction from the plot
+
+plot(weekly_corr)
+corrplot::corrplot(cor(weekly_corr))
+```
+Looking at the numbers and graphs, it looks like the Lags all very similar
+ranges of data (-18:12 approx) along with all variables being numeric except our
+target variable of Direction. Direction is also semi-balanced with a 484:605
+ratio. In the correlation plot, we can see a strong positive relationship 
+between Volume and Year.
+
+b)
+Time to fit a logistic regression on the data.
+```{r}
+weekly_glm = glm(Direction~Lag1+Lag2+Lag3+Lag4+Lag5+Volume, data = weekly,
+                 family = binomial)
+summary(weekly_glm)
+```
+Using an alpha level of 0.05, Lag2 is significant at a p-value of 0.0296.
+
+c.
+Time to make the confusion martrix to assess accuracy.
+```{r}
+pred1 = predict(weekly_glm, type = 'response') > 0.5
+
+tab1 <- table(Predicted = pred1, Actual = weekly$Direction)
+tab1
+sum(diag(tab1))/sum(tab1)
+```
+We get an accuracy of 0.561 for this logistic regression model which isn't all
+that great. Another issue with this is that the model is predicting a lot of
+False Negatives for Down. So the model predicts downtrends instead as uptrends.
+
+d.
+Now only using Lag2 and train/test split based on years.
+
+```{r}
+weekly_train = weekly$Year < 2009
+
+weekly_glm2 = glm(Direction~Lag2, data = weekly[weekly_train,], family = binomial)
+summary(weekly_glm2)
+```
+
+
+```{r}
+pred2 = predict(weekly_glm2, weekly[!weekly_train, ], type = 'response') > 0.5
+
+tab2 <- table(Predicted = pred2, Actual = weekly[!weekly_train,]$Direction)
+tab2
+sum(diag(tab2))/sum(tab2)
+```
+We get an accuracy of 0.625 of accurately predicting weekly trends on the final
+2 test years. This is about an ~11% increase in accuracy compared to the
+previous model with multiple predictors and without a test split.
+
+e. LDA
+```{r}
+weekly_lda = lda(Direction~Lag2, data = weekly[weekly_train,])
+
+pred3 = predict(weekly_lda, weekly[!weekly_train, ], type = 'response')$class
+
+tab3 <- table(Predicted = pred3, Actual = weekly[!weekly_train,]$Direction)
+tab3
+sum(diag(tab3))/sum(tab3)
+```
+LDA also had an accuracy of 0.625
+
+f. QDA
+```{r}
+weekly_qda = qda(Direction~Lag2, data = weekly[weekly_train,])
+
+pred4 = predict(weekly_qda, weekly[!weekly_train, ], type = 'response')$class
+
+tab4 <- table(Predicted = pred4, Actual = weekly[!weekly_train,]$Direction)
+tab4
+sum(diag(tab4))/sum(tab4)
+```
+QDA accuracy : 0.587
+
+g. KNN w/ K=1
+
+```{r}
+set.seed(1)
+weekly_knn = knn(weekly[weekly_train, 'Lag2', drop = F],
+                 weekly[!weekly_train, 'Lag2', drop = F],
+                 weekly$Direction[weekly_train])
+
+tab5 <- table(weekly_knn, weekly[!weekly_train,]$Direction)
+tab5
+sum(diag(tab5))/sum(tab5)                        
+```
+KNN Accuracy is .5
+
+h. naive Bayes
+
+```{r}
+weekly_bayes = naiveBayes(Direction~Lag2, data = weekly, subset = weekly_train)
+pred6 = predict(weekly_bayes, weekly[!weekly_train,], type = 'class')
+tab6 <- table(pred6, weekly[!weekly_train,]$Direction)
+tab6
+sum(diag(tab6))/sum(tab6)
+```
+
+Naive Bayes accuracy of 0.587
+
+i. Which is best?
+The two models that gave the best accuracies are LDA and Logistic Regression
+with 0.625 (after we only used Lag2 as a predictor).
+
+j. Experiment
+
+```{r}
+weekly_lda = lda(Direction~Lag2+Volume, data = weekly[weekly_train,])
+
+pred = predict(weekly_lda, weekly[!weekly_train, ], type = 'response')$class
+
+tab <- table(Predicted = pred, Actual = weekly[!weekly_train,]$Direction)
+tab
+sum(diag(tab))/sum(tab)
+```
+Only adding Volume changed the accuracy by almost 0.1!
+
+```{r}
+set.seed(1)
+weekly_knn = knn(weekly[weekly_train, 'Lag2', drop = F],
+                 weekly[!weekly_train, 'Lag2', drop = F],
+                 weekly$Direction[weekly_train], k =10)
+
+tab <- table(weekly_knn, weekly[!weekly_train,]$Direction)
+tab
+sum(diag(tab))/sum(tab)
+```
+Increasing k to 10 gave us 0.048 increased accuracy.
+
+## 14.
+a)
+```{r}
+auto = ISLR2::Auto
+mpg01 = rep(0, length(auto$mpg))
+mpg01[auto$mpg > median(auto$mpg)] = 1
+auto = data.frame(auto, mpg01)
+summary(auto$mpg)
+```
+```{r}
+view(auto)
+```
+b)
+```{r}
+auto_no_name = auto %>% 
+  dplyr::select(-name)
+corrplot::corrplot(cor(auto_no_name))
+plot(auto_no_name)
+```
+Variables that are positively correlated: mpg, and slight correlation with origin
+Negatively correlated: Cylinders, Displacement, Horsepower, Weight
+
+c. Test/Train Split
+```{r}
+set.seed(1)
+index = sample(1:nrow(auto), 0.8*nrow(auto))
+auto_train = auto[index,]
+auto_test = auto[-index,]
+```
+
+d. LDA
+I will use cylinders, displacement,horsepower, and weight because they looked to have the
+largest association with mpg01.
+```{r}
+auto_lda = lda(mpg01~ cylinders + displacement + weight+ horsepower,
+               data = auto_train)
+pred = predict(auto_lda, auto_test)
+tab = table(pred$class, auto_test$mpg01)
+tab
+sum(diag(tab))/sum(tab)
+mean(pred$class != auto_test$mpg01)
+```
+This LDA model using an 80/20 train/test split got an accuracy of 91.1% or 
+an error rate of 8.8%.
+
+e. QDA
+```{r}
+auto_qda = qda(mpg01~ cylinders + displacement + weight + horsepower,
+               data = auto_train)
+pred = predict(auto_qda, auto_test)
+tab = table(pred$class, auto_test$mpg01)
+tab
+sum(diag(tab))/sum(tab)
+mean(pred$class != auto_test$mpg01)
+```
+Same accuracy / error rate as the LDA 91.1% acc, 8.8% error
+
+f. logistic regression
+```{r}
+auto_glm = glm(mpg01~ cylinders + displacement + weight + horsepower,
+               data = auto_train, family = binomial())
+pred = predict(auto_glm, auto_test, type = 'response') > 0.5
+tab = table(Predicted = pred, Actual = auto_test$mpg01)
+tab
+sum(diag(tab))/sum(tab)
+1 - (sum(diag(tab))/sum(tab))
+```
+Logistic regression gave us an accuracy of 93.7% and an error rate of 6.3% which
+is better than our prior models.
+
+g. Naive Bayes
+```{r}
+auto_bayes = naiveBayes(mpg01 ~ cylinders + displacement + weight + horsepower,
+               data = auto_train)
+pred = predict(auto_bayes, auto_test, type = 'class')
+tab = table(Predicted = pred, Actual = auto_test$mpg01)
+tab
+sum(diag(tab))/sum(tab)
+1 - (sum(diag(tab))/sum(tab))
+```
+Bayes gave us an accuracy of 92.4% and error of 7.6%
+
+h. KNN
+
+
+
+
+```{r}
+set.seed(1)
+auto_train = auto[index,c(2, 3, 4, 5)] 
+auto_test <- auto[-index, c(2, 3, 4, 5)]
+auto_knn <- knn(auto_train, auto_test, auto$mpg01[index], k = 1)
+
+tab <- table(auto_knn, auto$mpg01[-index])
+accuracy <- sum(diag(tab)) / sum(tab)
+tab
+accuracy
+1-accuracy
+```
+
+
+
+```{r}
+set.seed(1)
+finding_k = sapply(1:10, function(i) {
+  auto_knn = knn(auto_train, auto_test, auto$mpg01[index], k = i)
+  mean(auto_knn != auto$mpg01[-index])
+})
+names(finding_k) = 1:10
+finding_k[which.min(finding_k)]
+```
+The best k=6 which gave us an accuracy of 92.4% and an error of 7.6% which is 
+better than k=1 which gave us 87.3% accuracy and 12.75 error
+
+## 16.
+
+```{r}
+boston = ISLR2::Boston
+morecrim = rep(0, length(boston$crim))
+morecrim[boston$crim > median(boston$crim)] = 1
+boston = data.frame(boston, morecrim)
+summary(boston)
+```
+```{r}
+corrplot::corrplot(cor(boston))
+```
+Potential predictors based on larger circles on morecrim in the correlation plot:
+indus, nox, age, dis, rad, tax
+
+
+```{r}
+set.seed(1)
+index = sample(1:nrow(auto), 0.8*nrow(auto))
+boston_train = boston[index,]
+boston_test = boston[-index,]
+```
+Logit
+```{r}
+boston_glm = glm(morecrim ~ indus+ nox+ age+ dis+ rad+ tax, data = boston_train,
+                 family = binomial)
+pred = predict(boston_glm, boston_test, type = 'response') > 0.5
+tab = table(Predicted = pred, Actual = boston_test$morecrim)
+tab
+sum(diag(tab))/sum(tab)
+1 - (sum(diag(tab))/sum(tab))
+
+```
+Logistic regression accuracy: 91.2%
+Error: 8.8%
+
+LDA
+```{r}
+boston_lda = lda(morecrim ~ indus+ nox+ age+ dis+ rad+ tax, data = boston_train)
+pred = predict(boston_lda, boston_test)
+tab = table(pred$class, boston_test$morecrim)
+tab
+sum(diag(tab))/sum(tab)
+mean(pred$class != boston_test$morecrim)
+```
+LDA 
+Acc: 86%
+Error: 14%
+
+Naive Bayes
+
+```{r}
+boston_bayes = naiveBayes(morecrim ~ indus+ nox+ age+ dis+ rad+ tax, 
+                           data = boston_train)
+pred = predict(boston_bayes, boston_test, type = 'class')
+tab <- table(pred, boston_test$morecrim)
+tab
+sum(diag(tab))/sum(tab)
+1-(sum(diag(tab))/sum(tab))
+```
+Naive Bayes
+Acc: 84.4%
+Error: 15.5%
+
+KNN
+```{r}
+set.seed(1)
+boston_train = boston[index,c(3,5,7,8,9,10)] 
+boston_test = boston[-index, c(3,5,7,8,9,10)]
+boston_knn = knn(boston_train, boston_test, boston$morecrim[index], k = 1)
+
+tab = table(boston_knn, boston$morecrim[-index])
+accuracy = sum(diag(tab)) / sum(tab)
+tab
+accuracy
+1-accuracy
+```
+With k=1, Acc: 91.2% Error: 8.8%
+Time to do a for loop to find best k.
+
+```{r}
+set.seed(1)
+finding_k = sapply(1:30, function(i) {
+  boston_knn = knn(boston_train, boston_test, boston$morecrim[index], k = i)
+  mean(boston_knn != boston$morecrim[-index])
+})
+names(finding_k) = 1:10
+finding_k[which.min(finding_k)]
+```
+```{r}
+set.seed(1)
+boston_train = boston[index,c(3,5,7,8,9,10)] 
+boston_test = boston[-index, c(3,5,7,8,9,10)]
+boston_knn = knn(boston_train, boston_test, boston$morecrim[index], k = 3)
+
+tab = table(boston_knn, boston$morecrim[-index])
+accuracy = sum(diag(tab)) / sum(tab)
+tab
+accuracy
+1-accuracy
+```
+Best k=3, so we got a slightly improved accuracy of 91.7 and a lower error rate
+of 8.3%.
+
+The best model we got for the Boston data was the final KNN model where k=3
+with an accuracy of 91.7 and error rate of 8.3%. The next best models were the
+logistic regression and KNN=1 with both having an accuracy of 91.2%.
